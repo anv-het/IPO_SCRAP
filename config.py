@@ -70,7 +70,7 @@ COMMON_HEADERS = {
 USE_SQL_SERVER = False 
 
 # SQLite Database Configuration
-SQLITE_DB_NAME = "ipo_data_investorgain_new.db"
+SQLITE_DB_NAME = "ipo_data_investorgain.db"
 
 # SQL Server Database Configuration
 SQL_SERVER_DB_CONFIG = {
