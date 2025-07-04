@@ -153,7 +153,7 @@ class DatabaseManager:
             return False
 
         # Prepare data for insertion/update
-        # Convert lists/dicts to JSON strings
+        # Convert lists/dicts to JSON strings and handle other data types
         json_fields = [
             'gmp_trend_history_json', 
             'ipo_strengths_json', 
@@ -168,11 +168,28 @@ class DatabaseManager:
             'contact_ipo_registrar_json',
             'contact_ipo_lead_manager_json'
         ]
-        for key in json_fields:
-            if key in ipo_data and isinstance(ipo_data[key], (list, dict)):
-                ipo_data[key] = json.dumps(ipo_data[key], ensure_ascii=False)
-            elif key in ipo_data and ipo_data[key] is None:
-                ipo_data[key] = None # Ensure None is stored as NULL
+        
+        # Convert all data to appropriate types
+        for key, value in ipo_data.items():
+            if key in json_fields:
+                if isinstance(value, (list, dict)):
+                    ipo_data[key] = json.dumps(value, ensure_ascii=False)
+                elif value is None:
+                    ipo_data[key] = None
+                elif isinstance(value, str):
+                    ipo_data[key] = value
+                else:
+                    ipo_data[key] = str(value)
+            elif isinstance(value, (list, dict)):
+                # Convert any other list/dict to JSON string
+                ipo_data[key] = json.dumps(value, ensure_ascii=False)
+            elif value is None:
+                ipo_data[key] = None
+            elif isinstance(value, (int, float, str)):
+                ipo_data[key] = value
+            else:
+                # Convert other types to string
+                ipo_data[key] = str(value)
 
         # Get column names from the table for robust insertion
         # This is important because the actual columns might differ from the initial dict
