@@ -155,11 +155,17 @@ class DatabaseManager:
         # Prepare data for insertion/update
         # Convert lists/dicts to JSON strings
         json_fields = [
-            'gmp_trend_history_json', 'ipo_strengths_json', 'ipo_objectives_json',
-            'subscription_bidding_history_json', 'subscription_share_allocation_json',
-            'subscription_daywise_table_json', 'subscription_shares_bid_amount_table_json',
-            'company_financials_json', 'peer_comparison_json',
-            'contact_company_address_json', 'contact_ipo_registrar_json',
+            'gmp_trend_history_json', 
+            'ipo_strengths_json', 
+            'ipo_objectives_json',
+            'subscription_bidding_history_json', 
+            'subscription_share_allocation_json',
+            'subscription_daywise_table_json', 
+            'subscription_shares_bid_amount_table_json',
+            'company_financials_json', 
+            'peer_comparison_json',
+            'contact_company_address_json', 
+            'contact_ipo_registrar_json',
             'contact_ipo_lead_manager_json'
         ]
         for key in json_fields:

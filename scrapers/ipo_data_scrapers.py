@@ -313,21 +313,23 @@ def scrape_ipo_lots_table(soup):
 
     return ipo_lots_data
 
+#lets debug this we cant get the gmp data 
 def fetch_gmp_data_for_ipo(ipo_id):
     """
     Fetches GMP data for a specific IPO ID from the Investorgain API.
     """
     gmp_api_url = GMP_API_URL_TEMPLATE.format(ipo_id=ipo_id)
-    # print(f"  [GMP API] Fetching GMP data for IPO ID {ipo_id}...")
+    print(f"  [GMP API] Fetching GMP data for IPO ID {ipo_id} from URL: {gmp_api_url}")
     try:
         response_content = make_robust_request(gmp_api_url, is_api=True)
+        print(f"  [GMP API] Response content for ID {ipo_id}: {response_content}...")  # Debugging line
         if response_content:
             data = json.loads(response_content)
             if data.get("msg") == 1:
-                # print(f"  [GMP API] Successfully fetched GMP data for IPO ID {ipo_id}.")
+                print(f"  [GMP API] Successfully fetched GMP data for IPO ID {ipo_id}.")
                 return data
-            # else:
-                # print(f"  [GMP API] API response not as expected for IPO ID {ipo_id}: {data}")
+            else:
+                print(f"  [GMP API] API response not as expected for IPO ID {ipo_id}: {data}")
         return None
     except Exception as e:
         print(f"  [GMP API] Error fetching GMP data for IPO ID {ipo_id}: {e}")
@@ -338,17 +340,20 @@ def parse_gmp_api_data(gmp_data_array):
     Parses the 'ipoGmpData' list from the GMP API response.
     """
     gmp_json_data = {}
+
     if gmp_data_array and isinstance(gmp_data_array, list) and len(gmp_data_array) > 0:
+        print(f"  [GMP Parse] Found {len(gmp_data_array)} GMP entries in API response.")
         latest_gmp = gmp_data_array[0]
+        print(f"  [GMP Parse] Latest GMP entry: {latest_gmp}")
         gmp_json_data = {
             "gmp_latest": clean_text(latest_gmp.get("gmp", "N/A")),
             "estimated_listing_price": clean_text(latest_gmp.get("estimated_listing_price", "N/A")),
             "gmp_comments": clean_text(latest_gmp.get("gmp_comments", "N/A")),
             "subject_to_sauda": clean_text(latest_gmp.get("subject_to_sauda", "N/A")),
         }
-        # print(f"  [GMP Parse] Extracted latest GMP: {gmp_json_data.get('gmp_latest')}, Est. Listing: {gmp_json_data.get('estimated_listing_price')}")
-    # else:
-        # print("  [GMP Parse] No latest GMP data found in API response.")
+        print(f"  [GMP Parse] Extracted latest GMP: {gmp_json_data.get('gmp_latest')}, Est. Listing: {gmp_json_data.get('estimated_listing_price')}")
+    else:
+        print("  [GMP Parse] No latest GMP data found in API response.")
     return gmp_json_data
 
 def parse_gmp_trend_table(html_table_string):
