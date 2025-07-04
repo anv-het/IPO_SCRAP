@@ -8,6 +8,20 @@ IPO_LIST_API_URL = "https://webnodejs.investorgain.com/cloud/ipo/list-read"
 GMP_API_URL_TEMPLATE = "https://webnodejs.investorgain.com/cloud/ipo/ipo-gmp-read/{ipo_id}/true"
 SUBSCRIPTION_API_URL_TEMPLATE = "https://webnodejs.investorgain.com/cloud/ipo/ipo-subscription-read/{ipo_id}"
 
+# Year-wise IPO Summary API URLs
+IPO_SUMMARY_API_URL_TEMPLATE = "https://webnodejs.investorgain.com/cloud/report/data-read/394/1/7/{year}/2025-26/0/all"
+
+# Expected total records by year (as of July 2025)
+EXPECTED_RECORDS_BY_YEAR = {
+    2025: 141,
+    2024: 337,
+    2023: 244,
+    2022: 151,
+    2021: 121,
+    2020: 36,
+    2019: 6
+}
+
 # Common HTTP Headers to mimic a browser
 COMMON_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
