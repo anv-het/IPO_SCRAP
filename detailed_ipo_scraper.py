@@ -381,10 +381,22 @@ class DetailedIPOScraper:
                 additional_data['promoter_holding_post_ipo'] = promoter_post_match.group(1)
             
             # Listing exchange
-            listing_match = re.search(r'Listing.*?(?:on|at)[:\s]*([A-Z]{3,4})', all_text, re.IGNORECASE)
+            # Listing exchange (fallback if not already in table)
+            listing_match = re.search(r'Listing (?:at|on)[:\s]*([A-Z,\s]+)', all_text, re.IGNORECASE)
             if listing_match:
-                additional_data['listing_at'] = listing_match.group(1)
+                listing_raw = listing_match.group(1).strip()
+
+                # Clean listing value – remove anything after known exchanges
+                # e.g., "BSE, NSERetail Quota" ➜ "BSE, NSE"
+                cleaned = re.findall(r'(BSE|NSE)', listing_raw.upper())
+                if cleaned:
+                    additional_data['listing_at'] = ', '.join(sorted(set(cleaned)))
+            else:
+                additional_data['listing_at'] = 'N/A'
             
+            print(f"  Extracted additional details for IPO ID: {ipo_id}")
+            print(f"  Additional data: {additional_data}")
+
             return additional_data
             
         except Exception as e:

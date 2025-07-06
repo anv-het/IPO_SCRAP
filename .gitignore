@@ -13,6 +13,7 @@ __pypackages__/
 *.db
 *.sqlite
 *.sqlite3
+ipo_data_investorgain.db
 
 # Downloaded logos
 download/
