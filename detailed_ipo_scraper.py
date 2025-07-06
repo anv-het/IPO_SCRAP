@@ -394,6 +394,40 @@ class DetailedIPOScraper:
             else:
                 additional_data['listing_at'] = 'N/A'
             
+            # min_order_quantity
+            min_order_quantity_match = re.search(r'Market Lot[:\s]*([0-9,.\s]+)', all_text, re.IGNORECASE)
+            if min_order_quantity_match:
+                additional_data['min_order_quantity'] = min_order_quantity_match.group(1).strip()
+            # Shares per lot
+            shares_per_lot_match = re.search(r'Shares Per Lot[:\s]*([0-9,.\s]+)', all_text, re.IGNORECASE)
+            if shares_per_lot_match:
+                additional_data['shares_per_lot'] = shares_per_lot_match.group(1).strip()
+            # Issue price band
+            issue_price_band_match = re.search(r'Issue Price Band[:\s]*([0-9,.\s]+(?:Cr|Crore))', all_text, re.IGNORECASE)
+            if issue_price_band_match:
+                additional_data['issue_price_band'] = issue_price_band_match.group(1).strip()
+            # Promoter holding pre-IPO
+            promoter_pre_match = re.search(r'Promoter Holding Pre-IPO[:\s]*([0-9,.\s]+%)', all_text, re.IGNORECASE)
+            if promoter_pre_match:
+                additional_data['promoter_holding_pre_ipo'] = promoter_pre_match.group(1).strip()
+            # Promoter holding post-IPO
+            promoter_post_match = re.search(r'Promoter Holding Post-IPO[:\s]*([0-9,.\s]+%)', all_text, re.IGNORECASE)
+            if promoter_post_match:
+                additional_data['promoter_holding_post_ipo'] = promoter_post_match.group(1).strip()
+            # Retail quota
+            retail_quota_match = re.search(r'Retail Quota[:\s]*([0-9,.\s]+%)', all_text, re.IGNORECASE)
+            if retail_quota_match:  
+                additional_data['retail_quota'] = retail_quota_match.group(1).strip()
+            # Issue type
+            issue_type_match = re.search(r'Issue Type[:\s]*([A-Za-z\s]+)', all_text, re.IGNORECASE)
+            if issue_type_match:
+                additional_data['issue_type'] = issue_type_match.group(1).strip()
+
+            # Fresh issue amount
+            fresh_issue_match = re.search(r'Fresh Issue Amount[:\s]*([0-9,.\s]+(?:Cr|Crore))', all_text, re.IGNORECASE)
+            if fresh_issue_match:
+                additional_data['fresh_issue_amount'] = fresh_issue_match.group(1).strip()
+
             print(f"  Extracted additional details for IPO ID: {ipo_id}")
             print(f"  Additional data: {additional_data}")
 
