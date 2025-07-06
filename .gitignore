@@ -18,6 +18,7 @@ __pypackages__/
 download/
 company_logos/
 
+*doanload/
 
 
 # JSON output files
