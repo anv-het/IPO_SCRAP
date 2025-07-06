@@ -10,15 +10,15 @@ __pypackages__/
 
 # Project-specific files
 # Database files
-# *.db
-# *.sqlite
-# *.sqlite3
+*.db
+*.sqlite
+*.sqlite3
 
 # Downloaded logos
 download/
 company_logos/
 
-*doanload/
+*download/
 
 
 # JSON output files
