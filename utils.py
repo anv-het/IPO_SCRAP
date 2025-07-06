@@ -20,7 +20,7 @@ def clean_text(text):
         return ""
     text = str(text).replace('\xa0', ' ').replace('\n', ' ').strip()
     text = re.sub(r'\s+', ' ', text) # Replace multiple spaces with a single space
-    text = text.replace('&#8377;', '').replace('₹', '').replace(',', '').replace('x', '').replace('%', '')
+    text = text.replace('&#8377;', '').replace('₹', '').replace('\u20b9', '').replace(',', '').replace('x', '').replace('%', '')
     return text
 
 def convert_to_int(value):
@@ -33,8 +33,8 @@ def convert_to_int(value):
 def convert_to_float(value):
     """Converts a cleaned string to a float, returning None if conversion fails."""
     try:
-        # Handle cases where value might be like "₹ 1,234.56"
-        cleaned_value = re.sub(r'[₹,$]', '', str(value)).replace(',', '')
+        # Handle cases where value might be like "₹ 1,234.56" or "\u20b9 1,234.56"
+        cleaned_value = re.sub(r'[₹,$\u20b9]', '', str(value)).replace(',', '')
         return float(cleaned_value) if cleaned_value.strip() else None
     except (ValueError, TypeError):
         return None

@@ -306,12 +306,16 @@ class IPOSummaryScraper:
         if not text:
             return ""
         
-        # Replace HTML entities
-        text = text.replace('&#8377;', '₹')
+        # Replace HTML entities first
+        text = text.replace('&#8377;', '₹')  # Replace HTML currency entity with rupee symbol
         text = text.replace('&amp;', '&')
         text = text.replace('&lt;', '<')
         text = text.replace('&gt;', '>')
         text = text.replace('&quot;', '"')
+        
+        # Remove Unicode currency symbols for cleaner data storage
+        text = text.replace('\u20b9', '')  # Remove Unicode rupee symbol
+        text = text.replace('₹', '')  # Remove rupee symbol
         
         # Remove extra whitespace
         text = ' '.join(text.split())

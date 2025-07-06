@@ -287,8 +287,8 @@ def scrape_ipo_lots_table(soup):
         if match_shares:
             ipo_lots_data['shares_per_lot'] = clean_text(match_shares.group(1))
             # print(f"  [Lots] Extracted shares_per_lot from 'Market Lot': {ipo_lots_data['shares_per_lot']}")
-        elif ipo_lots_data.get('shares_per_lot_raw') != 'N/A':
-             if convert_to_int(ipo_lots_data['shares_per_lot_raw']) is not None:
+        elif ipo_lots_data.get('shares_per_lot_raw') and ipo_lots_data.get('shares_per_lot_raw') != 'N/A':
+             if convert_to_int(ipo_lots_data.get('shares_per_lot_raw')) is not None:
                  ipo_lots_data['shares_per_lot'] = ipo_lots_data['shares_per_lot_raw']
                  # print(f"  [Lots] Extracted shares_per_lot from 'Individual Investor': {ipo_lots_data['shares_per_lot']}")
              else:

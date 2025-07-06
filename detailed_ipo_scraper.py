@@ -26,7 +26,15 @@ from scrapers.ipo_data_scrapers import (
     extract_ipo_strengths,
     extract_ipo_objectives,
     extract_contact_sections,
-    extract_last_updated
+    extract_last_updated,
+    scrape_ipo_lots_table,
+    scrape_and_format_financial_data,
+    scrape_peer_comparison,
+    parse_ipo_share_allocation,
+    fetch_gmp_data_for_ipo,
+    parse_gmp_api_data,
+    fetch_ipo_subscription_data,
+    parse_ipo_bidding_data_json
 )
 from utils import make_robust_request, clean_text
 from config import BASE_URL
@@ -78,6 +86,10 @@ class DetailedIPOScraper:
             """
             self.db_manager.cursor.execute(query, (ipo_id,))
             result = self.db_manager.cursor.fetchone()
+
+            print(f"Fetching summary data for IPO ID: {ipo_id}")
+            print(f"Query executed: {query}")
+            print(f"Result: {result}")
             
             if result:
                 return {
@@ -169,6 +181,12 @@ class DetailedIPOScraper:
                 'scraping_date': datetime.now().isoformat()
             }
             
+            # Get summary data from the database to fill missing fields
+            summary_data = self.get_ipo_summary_data(ipo_id)
+            if summary_data:
+                ipo_data.update(summary_data)
+                logger.info(f"Updated IPO data with summary info for IPO ID: {ipo_id}")
+            
             # Extract company name and logo
             company_data = extract_company_name_and_logo(soup, ipo_id)
             ipo_data.update(company_data)
@@ -176,13 +194,31 @@ class DetailedIPOScraper:
             # Extract company about
             ipo_data['about_company_text'] = extract_company_about(soup)
             
-            # Extract basic IPO info from main details table
+            # Extract basic IPO info from main details table (includes issue_type)
             basic_info = extract_ipo_main_details_table(soup)
             ipo_data.update(basic_info)
             
             # Extract IPO dates
             dates_info = extract_ipo_important_dates(soup)
             ipo_data.update(dates_info)
+            
+            # 1. Extract IPO Lots data (shares_per_lot, min_order_quantity, issue_price_band, etc.)
+            lots_data = scrape_ipo_lots_table(soup)
+            if lots_data:
+                ipo_data.update(lots_data)
+                logger.info(f"Extracted lots data for IPO ID: {ipo_id}")
+            
+            # 2. Extract Company Financial data
+            financial_data = scrape_and_format_financial_data(soup)
+            if financial_data:
+                ipo_data['company_financials_json'] = json.dumps(financial_data, ensure_ascii=False)
+                logger.info(f"Extracted financial data for IPO ID: {ipo_id}")
+            
+            # 3. Extract Peer Comparison data
+            peer_data = scrape_peer_comparison(soup)
+            if peer_data:
+                ipo_data['peer_comparison_json'] = json.dumps(peer_data, ensure_ascii=False)
+                logger.info(f"Extracted peer comparison data for IPO ID: {ipo_id}")
             
             # Extract strengths and objectives
             ipo_data['ipo_strengths_json'] = extract_ipo_strengths(soup)
@@ -197,9 +233,17 @@ class DetailedIPOScraper:
             if last_updated:
                 ipo_data['last_updated_on_page'] = last_updated
             
-            # Extract GMP and financial data
-            gmp_financial_data = self.extract_gmp_and_financial_data(soup, ipo_id)
-            ipo_data.update(gmp_financial_data)
+            # 4. Extract GMP data from API
+            gmp_data = self.extract_gmp_data(ipo_id)
+            if gmp_data:
+                ipo_data.update(gmp_data)
+                logger.info(f"Extracted GMP data for IPO ID: {ipo_id}")
+            
+            # 5. Extract subscription data and retail quota
+            subscription_data = self.extract_subscription_data(ipo_id)
+            if subscription_data:
+                ipo_data.update(subscription_data)
+                logger.info(f"Extracted subscription data for IPO ID: {ipo_id}")
             
             # Extract additional details
             additional_details = self.extract_additional_details(soup, ipo_id)
@@ -212,59 +256,58 @@ class DetailedIPOScraper:
             logger.error(f"Error scraping detailed data for IPO ID {ipo_id}: {e}")
             return None
     
-    def extract_gmp_and_financial_data(self, soup, ipo_id: str) -> Dict:
-        """Extract GMP and financial data from the IPO page"""
+    def extract_gmp_data(self, ipo_id: str) -> Dict:
+        """Extract GMP data using the API for a specific IPO ID"""
         gmp_data = {
             'gmp_latest': 'N/A',
             'estimated_listing_price': 'N/A',
-            'gmp_trend_history_json': None,
-            'company_financials_json': None,
-            'peer_comparison_json': None
+            'gmp_comments': 'N/A',
+            'subject_to_sauda': 'N/A'
         }
         
         try:
-            # Extract GMP data from the page
-            gmp_section = soup.find('div', class_='gmp-section') or soup.find('div', id='gmp-section')
-            if gmp_section:
-                # Look for latest GMP
-                gmp_latest_element = gmp_section.find('span', class_='gmp-latest') or gmp_section.find('td', string=lambda x: x and 'GMP' in x)
-                if gmp_latest_element:
-                    gmp_data['gmp_latest'] = clean_text(gmp_latest_element.get_text())
+            # Fetch GMP data from API
+            api_gmp_data = fetch_gmp_data_for_ipo(ipo_id)
+            
+            if api_gmp_data and api_gmp_data.get("msg") == 1:
+                # Parse the GMP data
+                ipo_gmp_data = api_gmp_data.get("ipoGmpData", [])
+                parsed_gmp_data = parse_gmp_api_data(ipo_gmp_data)
                 
-                # Look for estimated listing price
-                listing_price_element = gmp_section.find('span', class_='listing-price')
-                if listing_price_element:
-                    gmp_data['estimated_listing_price'] = clean_text(listing_price_element.get_text())
-            
-            # Extract financial data from tables
-            financial_tables = soup.find_all('table')
-            financial_data = []
-            
-            for table in financial_tables:
-                table_data = self.extract_table_data(table)
-                if table_data and any('financial' in str(table_data).lower() or 'revenue' in str(table_data).lower() or 'profit' in str(table_data).lower()):
-                    financial_data.append(table_data)
-            
-            if financial_data:
-                gmp_data['company_financials_json'] = financial_data
-            
-            # Extract peer comparison data
-            peer_tables = soup.find_all('table')
-            peer_data = []
-            
-            for table in peer_tables:
-                table_data = self.extract_table_data(table)
-                if table_data and any('peer' in str(table_data).lower() or 'comparison' in str(table_data).lower() or 'similar' in str(table_data).lower()):
-                    peer_data.append(table_data)
-            
-            if peer_data:
-                gmp_data['peer_comparison_json'] = peer_data
+                if parsed_gmp_data:
+                    gmp_data.update(parsed_gmp_data)
+                    logger.info(f"Successfully extracted GMP data from API for IPO ID: {ipo_id}")
             
             return gmp_data
             
         except Exception as e:
-            logger.error(f"Error extracting GMP/financial data for IPO ID {ipo_id}: {e}")
+            logger.error(f"Error extracting GMP data for IPO ID {ipo_id}: {e}")
             return gmp_data
+    
+    def extract_subscription_data(self, ipo_id: str) -> Dict:
+        """Extract subscription data and retail quota for a specific IPO ID"""
+        subscription_data = {
+            'retail_quota': 'N/A'
+        }
+        
+        try:
+            # Fetch subscription data from API
+            api_subscription_data = fetch_ipo_subscription_data(ipo_id)
+            
+            if api_subscription_data and api_subscription_data.get("msg") == 1:
+                # Check for share allocation data
+                allocation_html = api_subscription_data.get("listItemsHTML", "")
+                if allocation_html:
+                    allocation_data, retail_quota = parse_ipo_share_allocation(allocation_html)
+                    if retail_quota:
+                        subscription_data['retail_quota'] = retail_quota
+                        logger.info(f"Extracted retail quota: {retail_quota} for IPO ID: {ipo_id}")
+            
+            return subscription_data
+            
+        except Exception as e:
+            logger.error(f"Error extracting subscription data for IPO ID {ipo_id}: {e}")
+            return subscription_data
     
     def extract_table_data(self, table) -> Optional[Dict]:
         """Extract data from HTML table"""

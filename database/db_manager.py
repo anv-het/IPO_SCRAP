@@ -73,6 +73,9 @@ class DatabaseManager:
             "issue_size_cr TEXT",
             "shares_per_lot TEXT",
             "min_order_quantity TEXT",
+            "min_hni_lots TEXT",
+            "min_small_hni_lots TEXT",
+            "min_big_hni_lots TEXT",
             "gmp_latest TEXT",
             "estimated_listing_price TEXT",
             "ipo_strengths_json TEXT",    # Stored as JSON string
