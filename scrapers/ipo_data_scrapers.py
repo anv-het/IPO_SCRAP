@@ -736,8 +736,8 @@ def parse_ipo_daywise_subscription_table(html_table_string):
 
 def parse_ipo_shares_bid_amount_table(html_table_string):
     """
-    FIXED: Parses the HTML table string from 'biddingReport' for IPO Shares Bid Amount.
-    This function now correctly extracts data from the biddingReport HTML structure.
+    ENHANCED: Parses the HTML table string from 'biddingReport' for IPO Shares Bid Amount.
+    This function uses improved logic to find and parse the correct table structure.
     """
     bid_amount_data = []
     if not html_table_string:
@@ -746,12 +746,13 @@ def parse_ipo_shares_bid_amount_table(html_table_string):
 
     soup = BeautifulSoup(html_table_string, 'html.parser')
     
-    # Look for the table with caption "IPO Bidding Live Number of Shares by Category"
+    # Multiple strategies to find the target table
     target_table = None
     all_tables = soup.find_all('table')
     
     print(f"    Found {len(all_tables)} tables in biddingReport")
     
+    # Strategy 1: Look for table with caption containing "Number of Shares by Category"
     for i, table in enumerate(all_tables):
         caption = table.find('caption')
         if caption and 'Number of Shares by Category' in caption.get_text():
@@ -759,31 +760,76 @@ def parse_ipo_shares_bid_amount_table(html_table_string):
             print(f"    ✓ Found target table with caption: '{caption.get_text()}'")
             break
     
+    # Strategy 2: Look for table with specific headers if caption method fails
     if not target_table:
-        print("    ✗ Could not find table with 'Number of Shares by Category' caption")
+        print("    Trying alternative method: searching by table headers...")
+        expected_headers = ['Category', 'Shares Offered', 'Shares Bid', 'Bid Amount']
+        
+        for i, table in enumerate(all_tables):
+            thead = table.find('thead')
+            if thead:
+                headers = [clean_text(th.get_text()) for th in thead.find_all('th')]
+                print(f"    Table {i+1} headers: {headers}")
+                
+                # Check if this table has the expected structure
+                header_matches = 0
+                for expected in expected_headers:
+                    for actual in headers:
+                        if expected.lower() in actual.lower():
+                            header_matches += 1
+                            break
+                
+                if header_matches >= 3:  # At least 3 out of 4 headers match
+                    target_table = table
+                    print(f"    ✓ Found target table by headers (Table {i+1})")
+                    break
+    
+    # Strategy 3: Look for any table with at least 4 columns if other methods fail
+    if not target_table:
+        print("    Trying fallback method: looking for any table with 4+ columns...")
+        for i, table in enumerate(all_tables):
+            tbody = table.find('tbody')
+            if tbody:
+                first_row = tbody.find('tr')
+                if first_row and len(first_row.find_all('td')) >= 4:
+                    target_table = table
+                    print(f"    ✓ Using fallback table with 4+ columns (Table {i+1})")
+                    break
+    
+    if not target_table:
+        print("    ✗ Could not find any suitable table for bid amount parsing")
+        # Debug: print first 500 chars of HTML for troubleshooting
+        print(f"    Debug HTML (first 500 chars): {html_table_string[:500]}")
         return bid_amount_data
 
     # Parse the table headers
     thead = target_table.find('thead')
-    if not thead:
-        print("    ✗ No thead found in target table")
-        return bid_amount_data
-    
-    headers = [clean_text(th.get_text()) for th in thead.find_all('th')]
-    print(f"    Table headers: {headers}")
+    headers = []
+    if thead:
+        headers = [clean_text(th.get_text()) for th in thead.find_all('th')]
+        print(f"    Table headers: {headers}")
+    else:
+        print("    ✗ No thead found, attempting to parse without headers")
     
     # Parse the table body
     tbody = target_table.find('tbody')
     if not tbody:
-        print("    ✗ No tbody found in target table")
-        return bid_amount_data
+        print("    ✗ No tbody found, trying to parse table rows directly")
+        rows = target_table.find_all('tr')
+        # Skip the first row if it looks like headers
+        if rows and len(rows) > 1:
+            first_row_cells = rows[0].find_all(['th', 'td'])
+            if first_row_cells and first_row_cells[0].name == 'th':
+                rows = rows[1:]  # Skip header row
+    else:
+        rows = tbody.find_all('tr')
     
-    rows = tbody.find_all('tr')
-    print(f"    Found {len(rows)} rows in tbody")
+    print(f"    Found {len(rows)} data rows in table")
     
-    for row in rows:
+    for row_idx, row in enumerate(rows):
         cells = row.find_all('td')
         if len(cells) < 4:  # Need at least Category, Shares Offered, Shares Bid, Bid Amount
+            print(f"    Row {row_idx+1}: Skipping - only {len(cells)} cells")
             continue
             
         category_text = clean_text(cells[0].get_text())
@@ -793,6 +839,12 @@ def parse_ipo_shares_bid_amount_table(html_table_string):
         
         # Skip empty rows
         if not category_text or category_text in ['', '&nbsp;']:
+            print(f"    Row {row_idx+1}: Skipping - empty category")
+            continue
+        
+        # Skip header-like rows
+        if category_text.lower() in ['category', 'categories']:
+            print(f"    Row {row_idx+1}: Skipping - header row")
             continue
             
         row_data = {
@@ -805,6 +857,7 @@ def parse_ipo_shares_bid_amount_table(html_table_string):
         bid_amount_data.append(row_data)
         print(f"      ✓ {category_text}: {shares_offered_text} offered, {shares_bid_text} bid, ₹{bid_amount_text} Cr")
     
+    print(f"    Successfully parsed {len(bid_amount_data)} bid amount entries")
     return bid_amount_data
 
 def scrape_and_format_financial_data(soup):
