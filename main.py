@@ -107,7 +107,8 @@ def process_single_ipo(ipo_entry, detail_url):
         'issue_size_cr': processed_issue_size,  # Use API data as default
         'shares_per_lot': None, 
         'min_order_quantity': None,
-        'gmp_latest': None, 
+        'gmp_latest': None,
+        'gmp_latest_details_json': [],
         'estimated_listing_price': None, 
         'gmp_trend_history_json': [],
         'ipo_strengths_json': [], 
@@ -173,6 +174,7 @@ def process_single_ipo(ipo_entry, detail_url):
         if gmp_api_response:
             latest_gmp_details = parse_gmp_api_data(gmp_api_response.get("ipoGmpData", []))
             consolidated_data.update(latest_gmp_details)
+            consolidated_data['gmp_latest_details_json'] = gmp_api_response.get("ipoGmpData", [])
             gmp_trend_table_data = parse_gmp_trend_table(gmp_api_response.get("ipoGmpTable", ""))
             consolidated_data["gmp_trend_history_json"] = gmp_trend_table_data
         else:

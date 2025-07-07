@@ -5,6 +5,7 @@ This script fetches detailed IPO data for all IPO IDs collected in the summary t
 It scrapes from investorgain.com and saves to the master IPO table.
 """
 
+import re
 import sys
 import os
 import logging
@@ -88,8 +89,8 @@ class DetailedIPOScraper:
             result = self.db_manager.cursor.fetchone()
 
             print(f"Fetching summary data for IPO ID: {ipo_id}")
-            print(f"Query executed: {query}")
-            print(f"Result: {result}")
+            # print(f"Query executed: {query}")
+            # print(f"Result: {result}")
             
             if result:
                 return {
@@ -196,6 +197,8 @@ class DetailedIPOScraper:
             
             # Extract basic IPO info from main details table (includes issue_type)
             basic_info = extract_ipo_main_details_table(soup)
+            print(f"basicinfo length: {len(basic_info)}")
+            print(f"basic_info: {basic_info}")
             ipo_data.update(basic_info)
             
             # Extract IPO dates
@@ -342,7 +345,10 @@ class DetailedIPOScraper:
             return None
     
     def extract_additional_details(self, soup, ipo_id: str) -> Dict:
-        """Extract additional IPO details that might be missing"""
+        """
+        Extract additional IPO details using structured data first (main table),
+        then fallback to regex where necessary.
+        """
         additional_data = {
             'min_order_quantity': 'N/A',
             'fresh_issue_amount': 'N/A',
@@ -353,88 +359,88 @@ class DetailedIPOScraper:
             'retail_quota': 'N/A',
             'issue_type': 'N/A'
         }
-        
+
         try:
-            # Look for key-value pairs in the page
-            all_text = soup.get_text()
-            
-            # Extract common IPO details using regex or text search
-            import re
-            
-            # Face value
-            face_value_match = re.search(r'Face Value[:\s]*₹?(\d+)', all_text, re.IGNORECASE)
-            if face_value_match:
-                additional_data['face_value'] = face_value_match.group(1)
-            
-            # Fresh issue amount
-            fresh_issue_match = re.search(r'Fresh Issue[:\s]*₹?([0-9,.\s]+(?:Cr|Crore))', all_text, re.IGNORECASE)
-            if fresh_issue_match:
-                additional_data['fresh_issue_amount'] = fresh_issue_match.group(1)
-            
-            # Promoter holding
-            promoter_pre_match = re.search(r'Promoter Holding.*?Pre.*?(\d+(?:\.\d+)?%)', all_text, re.IGNORECASE)
-            if promoter_pre_match:
-                additional_data['promoter_holding_pre_ipo'] = promoter_pre_match.group(1)
-            
-            promoter_post_match = re.search(r'Promoter Holding.*?Post.*?(\d+(?:\.\d+)?%)', all_text, re.IGNORECASE)
-            if promoter_post_match:
-                additional_data['promoter_holding_post_ipo'] = promoter_post_match.group(1)
-            
-            # Listing exchange
-            # Listing exchange (fallback if not already in table)
-            listing_match = re.search(r'Listing (?:at|on)[:\s]*([A-Z,\s]+)', all_text, re.IGNORECASE)
-            if listing_match:
-                listing_raw = listing_match.group(1).strip()
+            # Step 1: Get main details table
+            basic_info = extract_ipo_main_details_table(soup)
+            print(f"✅ Extracted {len(basic_info)} main table fields for IPO ID {ipo_id}")
+            print(f"→ Main Table Data: {basic_info}")
 
-                # Clean listing value – remove anything after known exchanges
-                # e.g., "BSE, NSERetail Quota" ➜ "BSE, NSE"
-                cleaned = re.findall(r'(BSE|NSE)', listing_raw.upper())
-                if cleaned:
-                    additional_data['listing_at'] = ', '.join(sorted(set(cleaned)))
-            else:
-                additional_data['listing_at'] = 'N/A'
-            
-            # min_order_quantity
-            min_order_quantity_match = re.search(r'Market Lot[:\s]*([0-9,.\s]+)', all_text, re.IGNORECASE)
-            if min_order_quantity_match:
-                additional_data['min_order_quantity'] = min_order_quantity_match.group(1).strip()
-            # Shares per lot
-            shares_per_lot_match = re.search(r'Shares Per Lot[:\s]*([0-9,.\s]+)', all_text, re.IGNORECASE)
-            if shares_per_lot_match:
-                additional_data['shares_per_lot'] = shares_per_lot_match.group(1).strip()
-            # Issue price band
-            issue_price_band_match = re.search(r'Issue Price Band[:\s]*([0-9,.\s]+(?:Cr|Crore))', all_text, re.IGNORECASE)
-            if issue_price_band_match:
-                additional_data['issue_price_band'] = issue_price_band_match.group(1).strip()
-            # Promoter holding pre-IPO
-            promoter_pre_match = re.search(r'Promoter Holding Pre-IPO[:\s]*([0-9,.\s]+%)', all_text, re.IGNORECASE)
-            if promoter_pre_match:
-                additional_data['promoter_holding_pre_ipo'] = promoter_pre_match.group(1).strip()
-            # Promoter holding post-IPO
-            promoter_post_match = re.search(r'Promoter Holding Post-IPO[:\s]*([0-9,.\s]+%)', all_text, re.IGNORECASE)
-            if promoter_post_match:
-                additional_data['promoter_holding_post_ipo'] = promoter_post_match.group(1).strip()
-            # Retail quota
-            retail_quota_match = re.search(r'Retail Quota[:\s]*([0-9,.\s]+%)', all_text, re.IGNORECASE)
-            if retail_quota_match:  
-                additional_data['retail_quota'] = retail_quota_match.group(1).strip()
-            # Issue type
-            issue_type_match = re.search(r'Issue Type[:\s]*([A-Za-z\s]+)', all_text, re.IGNORECASE)
-            if issue_type_match:
-                additional_data['issue_type'] = issue_type_match.group(1).strip()
+            # Step 2: Fill in from main table
+            keys_to_copy = [
+                'fresh_issue_amount', 'face_value', 'promoter_holding_pre_ipo',
+                'promoter_holding_post_ipo', 'listing_at', 'retail_quota', 'issue_type'
+            ]
+            for key in keys_to_copy:
+                val = basic_info.get(key, 'N/A')
+                if val and val != 'N/A':
+                    additional_data[key] = val
 
-            # Fresh issue amount
-            fresh_issue_match = re.search(r'Fresh Issue Amount[:\s]*([0-9,.\s]+(?:Cr|Crore))', all_text, re.IGNORECASE)
-            if fresh_issue_match:
-                additional_data['fresh_issue_amount'] = fresh_issue_match.group(1).strip()
+            # Step 3: Regex fallback from full text
+            all_text = soup.get_text(separator=' ', strip=True)
 
-            print(f"  Extracted additional details for IPO ID: {ipo_id}")
-            print(f"  Additional data: {additional_data}")
+            # Issue type fix (e.g., 'Book Build IssueSME IPO Issue Size')
+            if 'Issue Size' in additional_data['issue_type']:
+                match = re.search(r'Issue Type[:\s]*([A-Za-z\s]+?)(?:SME|IPO|Issue Size|$)', all_text, re.IGNORECASE)
+                if match:
+                    cleaned_type = match.group(1).strip()
+                    if cleaned_type:
+                        additional_data['issue_type'] = cleaned_type
 
+            # Face value fallback
+            if additional_data['face_value'] == 'N/A':
+                face_value_match = re.search(r'Face Value[:\s]*₹?(\d+)', all_text, re.IGNORECASE)
+                if face_value_match:
+                    additional_data['face_value'] = face_value_match.group(1).strip()
+
+            # Fresh issue amount fallback
+            if additional_data['fresh_issue_amount'] == 'N/A':
+                fresh_issue_match = re.search(r'Fresh Issue[:\s]*₹?([0-9,.\s]+(?:Cr|Crore))', all_text, re.IGNORECASE)
+                if fresh_issue_match:
+                    additional_data['fresh_issue_amount'] = fresh_issue_match.group(1).strip()
+
+            # Min order quantity (from Market Lot or Shares Per Lot)
+            moq_match = re.search(r'(?:Market Lot|Minimum Order Quantity|Shares Per Lot)[:\s]*([0-9,]+)', all_text, re.IGNORECASE)
+            if moq_match:
+                additional_data['min_order_quantity'] = moq_match.group(1).strip()
+
+            # Promoter holdings fallback
+            if additional_data['promoter_holding_pre_ipo'] == 'N/A':
+                promoter_pre_match = re.search(r'Promoter Holding.*?Pre.*?(\d+(?:\.\d+)?%)', all_text, re.IGNORECASE)
+                if promoter_pre_match:
+                    additional_data['promoter_holding_pre_ipo'] = promoter_pre_match.group(1)
+
+            if additional_data['promoter_holding_post_ipo'] == 'N/A':
+                promoter_post_match = re.search(r'Promoter Holding.*?Post.*?(\d+(?:\.\d+)?%)', all_text, re.IGNORECASE)
+                if promoter_post_match:
+                    additional_data['promoter_holding_post_ipo'] = promoter_post_match.group(1)
+
+            # Retail quota fallback - normalize values like "35", "35.00", "35% of the Net Issue"
+            if additional_data['retail_quota'] == 'N/A':
+                retail_quota_match = re.search(
+                    r'(?:Retail Quota|Retail Allocation|Retail Individual Investors).*?(?P<percent>\d+(?:\.\d+)?)(\s*%?)',
+                    all_text, re.IGNORECASE
+                ) 
+                if retail_quota_match:
+                    percent = retail_quota_match.group('percent')
+                    if percent:
+                        additional_data['retail_quota'] = f"{percent}%"
+
+
+            # Listing exchange fallback (cleanup BSE/NSE only)
+            if additional_data['listing_at'] == 'N/A':
+                listing_match = re.search(r'Listing (?:at|on)[:\s]*([A-Za-z,\s]+)', all_text, re.IGNORECASE)
+                if listing_match:
+                    raw = listing_match.group(1).strip().upper()
+                    exchanges = re.findall(r'(BSE|NSE)', raw)
+                    if exchanges:
+                        additional_data['listing_at'] = ', '.join(sorted(set(exchanges)))
+
+            print(f"📦 Final Additional Data for IPO ID {ipo_id}: {additional_data}")
             return additional_data
-            
+
         except Exception as e:
-            logger.error(f"Error extracting additional details for IPO ID {ipo_id}: {e}")
+            logger.error(f"❌ Error extracting additional details for IPO ID {ipo_id}: {e}")
             return additional_data
     
     def save_detailed_data(self, ipo_data: Dict) -> bool:

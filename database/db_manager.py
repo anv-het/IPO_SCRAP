@@ -108,7 +108,8 @@ class DatabaseManager:
             "subscription_bidding_history_json",
             "subscription_share_allocation_json",
             "subscription_daywise_table_json",
-            "subscription_shares_bid_amount_table_json"
+            "subscription_shares_bid_amount_table_json",
+            "gmp_latest_details_json"
         ]
 
         if self.use_sql_server:
@@ -169,7 +170,8 @@ class DatabaseManager:
             'peer_comparison_json',
             'contact_company_address_json', 
             'contact_ipo_registrar_json',
-            'contact_ipo_lead_manager_json'
+            'contact_ipo_lead_manager_json',
+            'gmp_latest_details_json',
         ]
         
         # Convert all data to appropriate types

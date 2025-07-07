@@ -4,7 +4,10 @@ from bs4 import BeautifulSoup
 import re
 import json
 from urllib.parse import urljoin
-import pandas as pd # Used for financial data parsing
+import pandas as pd
+import requests # Used for financial data parsing
+import zlib # For gzip decompression
+import brotli # For brotli decompression (install with: pip install brotli)
 
 # Import helper functions and config from parent directories
 from utils import clean_text, convert_to_int, convert_to_float, parse_date_status, make_robust_request
@@ -238,7 +241,9 @@ def extract_ipo_main_details_table(soup):
         # print(f"  [Main Details] Successfully extracted main IPO details.")
     # else:
         # print("  [Main Details] No main IPO details extracted.")
-
+    # print(f"  [Main Details] Extracted {len(main_details)} main details fields.")
+    # print(main_details)
+    # print("  [Main Details] Extracted main details 
     return main_details
 
 def scrape_ipo_lots_table(soup):
@@ -310,7 +315,8 @@ def scrape_ipo_lots_table(soup):
     for key in expected_keys:
         if key not in ipo_lots_data:
             ipo_lots_data[key] = 'N/A'
-
+    print(f"  [Lots] Extracted {len(ipo_lots_data)} IPO Lots fields.")
+    # print(f"  [Lots] Extracted IPO Lots data: {ipo_lots_data}")
     return ipo_lots_data
 
 #lets debug this we cant get the gmp data 
@@ -319,20 +325,21 @@ def fetch_gmp_data_for_ipo(ipo_id):
     Fetches GMP data for a specific IPO ID from the Investorgain API.
     """
     gmp_api_url = GMP_API_URL_TEMPLATE.format(ipo_id=ipo_id)
-    print(f"  [GMP API] Fetching GMP data for IPO ID {ipo_id} from URL: {gmp_api_url}")
+    # print(f"  [GMP API] Fetching GMP data for IPO ID {ipo_id} from URL: {gmp_api_url}")
     try:
         response_content = make_robust_request(gmp_api_url, is_api=True)
-        print(f"  [GMP API] Response content for ID {ipo_id}: {response_content}...")  # Debugging line
+        # print(f"  [GMP API] Response content for ID {ipo_id}: {response_content}...")  # Debugging line
         if response_content:
             data = json.loads(response_content)
             if data.get("msg") == 1:
-                print(f"  [GMP API] Successfully fetched GMP data for IPO ID {ipo_id}.")
+                # print(f"  [GMP API] Successfully fetched GMP data for IPO ID {ipo_id}.")
+                # print(f"  [GMP API] Raw data: {data}")
                 return data
-            else:
-                print(f"  [GMP API] API response not as expected for IPO ID {ipo_id}: {data}")
+            # else:
+                # print(f"  [GMP API] API response not as expected for IPO ID {ipo_id}: {data}")
         return None
     except Exception as e:
-        print(f"  [GMP API] Error fetching GMP data for IPO ID {ipo_id}: {e}")
+        # print(f"  [GMP API] Error fetching GMP data for IPO ID {ipo_id}: {e}")
         return None
 
 def parse_gmp_api_data(gmp_data_array):
@@ -342,58 +349,100 @@ def parse_gmp_api_data(gmp_data_array):
     gmp_json_data = {}
 
     if gmp_data_array and isinstance(gmp_data_array, list) and len(gmp_data_array) > 0:
-        print(f"  [GMP Parse] Found {len(gmp_data_array)} GMP entries in API response.")
+        # print(f"  [GMP Parse] Found {len(gmp_data_array)} GMP entries in API response.")
         latest_gmp = gmp_data_array[0]
-        print(f"  [GMP Parse] Latest GMP entry: {latest_gmp}")
+        # print(f"  [GMP Parse] Latest GMP entry: {latest_gmp}")
         gmp_json_data = {
-            "gmp_latest": clean_text(latest_gmp.get("gmp", "N/A")),
-            "estimated_listing_price": clean_text(latest_gmp.get("estimated_listing_price", "N/A")),
+            "Seq": clean_text(str(latest_gmp.get("Seq", "N/A"))),
+            "id (GMP Data)": clean_text(str(latest_gmp.get("id", "N/A"))),
+            "ipo_id (GMP Data)": clean_text(str(latest_gmp.get("ipo_id", "N/A"))),
+            "gmp_date": clean_text(latest_gmp.get("gmp_date", "N/A")),
+            "gmp": clean_text(latest_gmp.get("gmp", "N/A")),
             "gmp_comments": clean_text(latest_gmp.get("gmp_comments", "N/A")),
+            "gmp_compare_desc": clean_text(latest_gmp.get("gmp_compare_desc", "N/A")),
             "subject_to_sauda": clean_text(latest_gmp.get("subject_to_sauda", "N/A")),
+            "gmp_city": clean_text(latest_gmp.get("gmp_city", "N/A")),
+            "gmp_variation": clean_text(latest_gmp.get("gmp_variation", "N/A")),
+            "max_ipo_price": clean_text(latest_gmp.get("max_ipo_price", "N/A")),
+            "estimated_listing_price": clean_text(latest_gmp.get("estimated_listing_price", "N/A")),
+            "gmp_percent_calc": clean_text(latest_gmp.get("gmp_percent_calc", "N/A")),
+            "gmp_desc_other": clean_text(latest_gmp.get("gmp_desc_other", "N/A")),
+            "up_down_status": clean_text(latest_gmp.get("up_down_status", "N/A")),
+            "gmp_active_record_flag": clean_text(str(latest_gmp.get("gmp_active_record_flag", "N/A"))),
+            "sub2": clean_text(latest_gmp.get("sub2", "N/A")),
+            "est_profit": clean_text(latest_gmp.get("est_profit", "N/A")),
+            "create_date": clean_text(latest_gmp.get("create_date", "N/A")),
+            "create_date_gmp": clean_text(latest_gmp.get("create_date_gmp", "N/A")),
+            "last_updated_gmp": clean_text(latest_gmp.get("last_updated_gmp", "N/A")),
+            "last_updated": clean_text(latest_gmp.get("last_updated", "N/A"))
         }
-        print(f"  [GMP Parse] Extracted latest GMP: {gmp_json_data.get('gmp_latest')}, Est. Listing: {gmp_json_data.get('estimated_listing_price')}")
+        gmp_json_data["gmp_latest"] = clean_text(latest_gmp.get("gmp", "N/A"))
+        # print(f"  [GMP Parse] Extracted latest GMP: {gmp_json_data.get('gmp_latest')}, Est. Listing: {gmp_json_data.get('estimated_listing_price')}")
     else:
         print("  [GMP Parse] No latest GMP data found in API response.")
+    # print(f"  [GMP Parse] Parsed GMP data: {gmp_json_data}")
+  
     return gmp_json_data
 
 def parse_gmp_trend_table(html_table_string):
     """
-    Parses the HTML table string (ipoGmpTable) to extract day-wise GMP trends.
+    Parses the HTML table string (ipoGmpTable) to extract day-wise GMP trends
+    for the specified 7 columns.
+    Args:
+        html_table_string (str): The HTML content of the GMP trend table.
+    Returns:
+        list: A list of dictionaries, where each dictionary represents a row in the table.
     """
     gmp_trend_data = []
     if not html_table_string:
-        # print("  [GMP Trend] No HTML table string provided for GMP trend.")
         return gmp_trend_data
-
+    # print("  [GMP Trend] Attempting to parse GMP trend table...")
     soup = BeautifulSoup(html_table_string, 'html.parser')
     table = soup.find('table')
 
-    if not table or not table.find('thead') or not table.find('tbody'):
-        # print("  [GMP Trend] GMP trend table structure not found.")
+    if not table:
         return gmp_trend_data
 
-    headers = [clean_text(th.get_text()) for th in table.find('thead').find_all('th')]
-    header_to_output_key_map = {
-        "GMP Date": "gmp_date", "IPO Price": "ipo_price", "GMP": "gmp",
-        "Sub2 Sauda Rate": "sub2_sauda_rate", "Estimated Listing Price": "estimated_listing_price",
-        "Estimated Profit": "estimated_profit", "Last Updated": "last_updated_gmp_trend"
-    }
+    desired_columns = [
+        "GMP Date",
+        "IPO Price",
+        "GMP",
+        "Sub2 Sauda Rate",
+        "Estimated Listing Price",
+        "Estimated Profit",
+        "Last Updated"
+    ]
+    
+    raw_headers_from_table = [clean_text(th.get_text()) for th in table.find('thead').find_all('th')]
+    
+    header_to_output_key_map = {}
+    for header in raw_headers_from_table:
+        if "Estimated Profit" in header:
+            header_to_output_key_map[header] = "Estimated Profit"
+        else:
+            header_to_output_key_map[header] = header
 
     body_rows = table.find('tbody').find_all('tr')
     for row in body_rows:
         row_data = {}
         cells = row.find_all('td')
-        if len(cells) >= len(headers):
+        
+        if len(cells) >= len(desired_columns):
             for i, cell in enumerate(cells):
-                if i < len(headers):
-                    raw_header = headers[i]
-                    output_key = header_to_output_key_map.get(raw_header, raw_header.lower().replace(' ', '_'))
-                    cell_text = clean_text(cell.get_text(separator=" ", strip=True))
-                    row_data[output_key] = cell_text
-            gmp_trend_data.append(row_data)
-    
-    # print(f"  [GMP Trend] Parsed {len(gmp_trend_data)} GMP trend entries.")
+                if i < len(raw_headers_from_table):
+                    raw_header = raw_headers_from_table[i]
+                    output_key = header_to_output_key_map.get(raw_header)
+                    
+                    if output_key in desired_columns:
+                        cell_text = clean_text(cell.get_text(separator=" ", strip=True))
+                        row_data[output_key] = cell_text
+            
+            if all(col in row_data for col in desired_columns):
+                gmp_trend_data.append(row_data)
+    print(f"  [GMP Trend] Parsed {len(gmp_trend_data)} GMP trend entries.")
+    # print("  [GMP Trend] Returning GMP trend data.------------- fineeeeeeeeeeeeeeeeeeel ", gmp_trend_data)
     return gmp_trend_data
+
 
 def extract_ipo_strengths(soup):
     """
@@ -452,190 +501,311 @@ def extract_ipo_objectives(soup):
 def fetch_ipo_subscription_data(ipo_id):
     """
     Fetches IPO subscription data for a specific IPO ID from the Investorgain API.
+    Args:
+        ipo_id (int): The ID of the IPO.
+    Returns:
+        dict: The JSON response containing 'data' with 'ipoBiddingData', 'metaTitle', etc.,
+              and 'sResultIPOBidding' HTML string. Returns None if there's an error or no data.
     """
-    subscription_api_url = SUBSCRIPTION_API_URL_TEMPLATE.format(ipo_id=ipo_id)
-    # print(f"  [Subscription API] Fetching Subscription data for IPO ID {ipo_id}...")
+    subscription_api_url = f"https://webnodejs.investorgain.com/cloud/ipo/ipo-subscription-read/{ipo_id}"
+    print(f"  - Fetching Subscription data for IPO ID {ipo_id} from API: {subscription_api_url}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive",
+        "Host": "webnodejs.investorgain.com",
+        "Referer": f"https://www.investorgain.com/ipo-subscription/{ipo_id}/", # Referer should match
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site"
+    }
     try:
-        response_content = make_robust_request(subscription_api_url, is_api=True)
-        if response_content:
-            data = json.loads(response_content)
-            if data.get("msg") == 1:
-                # print(f"  [Subscription API] Successfully fetched Subscription data for IPO ID {ipo_id}.")
-                return data
-            # else:
-                # print(f"  [Subscription API] API response not as expected for IPO ID {ipo_id}: {data}")
+        response = requests.get(subscription_api_url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        print(f"    - Sub. Response Status Code: {response.status_code}")
+        print(f"    - Sub. Response Headers: {response.headers.get('Content-Encoding')}")
+
+        try:
+            data = response.json()
+        except json.JSONDecodeError as e:
+            print(f"  ✗ JSON decoding error from Subscription API response for IPO ID {ipo_id}: {e}")
+            print(f"  ✗ Raw Subscription response content (first 500 chars, as bytes): {response.content[:500]}")
+            
+            content_encoding = response.headers.get('Content-Encoding')
+            if content_encoding == 'gzip':
+                try:
+                    decompressed_content = zlib.decompress(response.content, 16 + zlib.MAX_WBITS).decode('utf-8')
+                    print(f"    - Attempted gzip decompression. Result (first 200 chars): {decompressed_content[:200]}")
+                    data = json.loads(decompressed_content)
+                except Exception as decompress_e:
+                    print(f"    ✗ Manual gzip decompression failed: {decompress_e}")
+                    return None
+            elif content_encoding == 'br':
+                try:
+                    decompressed_content = brotli.decompress(response.content).decode('utf-8')
+                    print(f"    - Attempted brotli decompression. Result (first 200 chars): {decompressed_content[:200]}")
+                    data = json.loads(decompressed_content)
+                except Exception as decompress_e:
+                    print(f"    ✗ Manual brotli decompression failed: {decompress_e}")
+                    return None
+            else:
+                print("  No known compression for Subscription API, or auto-decompression failed.")
+                return None
+
+        if data.get("msg") == 1:
+            return data
+        else:
+            print(f"  ✗ Subscription API response not as expected (msg != 1): {data}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"  ✗ Network error fetching Subscription data for IPO ID {ipo_id}: {e}")
         return None
     except Exception as e:
-        print(f"  [Subscription API] Error fetching Subscription data for IPO ID {ipo_id}: {e}")
+        print(f"  ✗ An unexpected error occurred while fetching Subscription data for IPO ID {ipo_id}: {e}")
         return None
+
+
 
 def parse_ipo_bidding_data_json(bidding_data_array):
     """
-    Parses the 'ipoBiddingData' list from the Subscription API response.
+    Parses the 'ipoBiddingData' list from the Subscription API response,
+    extracting all specified fields.
     """
     parsed_data = []
     if not bidding_data_array:
-        # print("  [Subscription Parse] No bidding history data array provided.")
         return parsed_data
 
     for entry in bidding_data_array:
         parsed_entry = {
+            "Seq": convert_to_int(clean_text(str(entry.get("Seq", "N/A")))),
+            "id (Subscription Data)": convert_to_int(clean_text(str(entry.get("id", "N/A")))),
+            "tsb_ipo_id": convert_to_int(clean_text(str(entry.get("tsb_ipo_id", "N/A")))),
+            "cor_id": convert_to_int(clean_text(str(entry.get("cor_id", "N/A")))),
             "bid_date": clean_text(entry.get("bid_date", "N/A")),
-            "qib_ratio": convert_to_float(clean_text(entry.get("qib", "N/A"))),
-            "nii_ratio": convert_to_float(clean_text(entry.get("nii", "N/A"))),
-            "rii_ratio": convert_to_float(clean_text(entry.get("rii", "N/A"))),
-            "emp_ratio": convert_to_float(clean_text(entry.get("emp", "N/A"))),
-            "total_ratio": convert_to_float(clean_text(entry.get("total", "N/A"))),
+            "qib_offered": convert_to_int(clean_text(entry.get("qib_offered", "N/A"))),
+            "nii_offered": convert_to_int(clean_text(entry.get("nii_offered", "N/A"))),
+            "nii_offered_big": convert_to_int(clean_text(entry.get("nii_offered_big", "N/A"))),
+            "nii_offered_small": convert_to_int(clean_text(entry.get("nii_offered_small", "N/A"))),
+            "rii_offered": convert_to_int(clean_text(entry.get("rii_offered", "N/A"))),
+            "emp_offered": convert_to_int(clean_text(entry.get("emp_offered", "N/A"))),
+            "other_offered": convert_to_int(clean_text(entry.get("other_offered", "N/A"))),
+            "total_offered": convert_to_int(clean_text(entry.get("total_offered", "N/A"))),
             "qib_shares_bid_for": convert_to_int(clean_text(entry.get("qib_shares_bid_for", "N/A"))),
-            "total_shares_bid_for": convert_to_int(clean_text(entry.get("total_shares_bid_for", "N/A")))
+            "nii_shares_bid_for": convert_to_int(clean_text(entry.get("nii_shares_bid_for", "N/A"))),
+            "nii_shares_bid_for_big": convert_to_int(clean_text(entry.get("nii_shares_bid_for_big", "N/A"))),
+            "nii_shares_bid_for_small": convert_to_int(clean_text(entry.get("nii_shares_bid_for_small", "N/A"))),
+            "rii_shares_bid_for": convert_to_int(clean_text(entry.get("rii_shares_bid_for", "N/A"))),
+            "emp_shares_bid_for": convert_to_int(clean_text(entry.get("emp_shares_bid_for", "N/A"))),
+            "other_shares_bid_for": convert_to_int(clean_text(entry.get("other_shares_bid_for", "N/A"))),
+            "total_shares_bid_for": convert_to_int(clean_text(entry.get("total_shares_bid_for", "N/A"))),
+            "qib_bid_amt": convert_to_float(clean_text(entry.get("qib_bid_amt", "N/A"))),
+            "nii_bid_amt": convert_to_float(clean_text(entry.get("nii_bid_amt", "N/A"))),
+            "nii_bid_amt_big": convert_to_float(clean_text(entry.get("nii_bid_amt_big", "N/A"))),
+            "nii_bid_amt_small": convert_to_float(clean_text(entry.get("nii_bid_amt_small", "N/A"))),
+            "rii_bid_amt": convert_to_float(clean_text(entry.get("rii_bid_amt", "N/A"))),
+            "emp_bid_amt": convert_to_float(clean_text(entry.get("emp_bid_amt", "N/A"))),
+            "other_bid_amt": convert_to_float(clean_text(entry.get("other_bid_amt", "N/A"))),
+            "total_bid_amt": convert_to_float(clean_text(entry.get("total_bid_amt", "N/A"))),
+            "qib": convert_to_float(clean_text(entry.get("qib", "N/A"))),
+            "nii": convert_to_float(clean_text(entry.get("nii", "N/A"))),
+            "nii_big": convert_to_float(clean_text(entry.get("nii_big", "N/A"))),
+            "nii_small": convert_to_float(clean_text(entry.get("nii_small", "N/A"))),
+            "rii": convert_to_float(clean_text(entry.get("rii", "N/A"))),
+            "emp": convert_to_float(clean_text(entry.get("emp", "N/A"))),
+            "other": convert_to_float(clean_text(entry.get("other", "N/A"))),
+            "total": convert_to_float(clean_text(entry.get("total", "N/A"))),
+            "cor_date_added": clean_text(entry.get("cor_date_added", "N/A")),
+            "create_date": clean_text(entry.get("create_date", "N/A")),
+            "ipo_category_desc": clean_text(entry.get("ipo_category_desc", "N/A")),
+            "listing_at": clean_text(entry.get("listing_at", "N/A")),
+            "company_short_name": clean_text(entry.get("company_short_name", "N/A"))
         }
         parsed_data.append(parsed_entry)
-    # print(f"  [Subscription Parse] Parsed {len(parsed_data)} bidding history entries.")
     return parsed_data
+
 
 def parse_ipo_share_allocation(html_string):
     """
     Parses the 'listItemsHTML' to extract IPO Share Allocation data.
+    Handles various formats of category names and ensures robust data extraction.
     """
     allocation_data = []
-    retail_quota = None  # Initialize retail_quota to None
-    
     if not html_string:
-        # print("  [Allocation] No HTML string provided for share allocation.")
-        return allocation_data, retail_quota
+        return allocation_data
 
     soup = BeautifulSoup(html_string, 'html.parser')
     list_items = soup.find_all('li')
 
-    allocation_regex = re.compile(r'(.+?):\s*([\d,\.]+\s*(?:Shares)?)\s*\(([\d\.]+)\%\)')
+    # Updated regex to handle the format: "Category: X Shares (Y%)"
+    allocation_regex = re.compile(
+        r'(.+?):\s*([\d,\.]+(?:\.\d{2})?)\s*Shares\s*\(([\d\.]+)\%\)'
+    )
 
     for item in list_items:
         text = item.get_text().strip()
+        print(f"    Processing list item: '{text}'")  # Debug print
+
         match = allocation_regex.search(text)
         if match:
-            category = clean_text(match.group(1))
-            shares_allocated = convert_to_int(clean_text(match.group(2).replace(' Shares', '')))
-            allocation_pct = convert_to_float(clean_text(match.group(3)))
-            
-            # Check if this is retail individual investor category
-            if re.search(r'retail.*individual.*investor', category.lower()):
-                retail_quota = f"{allocation_pct}%"
+            raw_category = match.group(1).strip()
+            raw_shares = match.group(2).strip()
+            raw_percentage = match.group(3).strip()
+
+            category = clean_text(raw_category)
+            shares_allocated = convert_to_int(clean_text(raw_shares))
+            allocation_pct = convert_to_float(clean_text(raw_percentage))
             
             allocation_data.append({
                 "category": category,
                 "shares_allocated": shares_allocated,
                 "allocation_pct": allocation_pct
             })
-        # else:
-            # print(f"  [Allocation] Warning: Could not parse list item for share allocation (regex mismatch): '{text}'")
-            # allocation_data.append({
-            #     "category": clean_text(text),
-            #     "shares_allocated": None,
-            #     "allocation_pct": None,
-            #     "parsing_error": True
-            # })
-    # print(f"  [Allocation] Parsed {len(allocation_data)} share allocation entries.")
-    return allocation_data, retail_quota
+            print(f"      ✓ Parsed: {category} = {shares_allocated} shares ({allocation_pct}%)")
+        else:
+            print(f"      ✗ Could not parse: '{text}'")
+            allocation_data.append({
+                "category": clean_text(text),
+                "shares_allocated": None,
+                "allocation_pct": None,
+                "parsing_error": True
+            })
+
+    return allocation_data
+
 
 def parse_ipo_daywise_subscription_table(html_table_string):
     """
-    Parses the HTML table string for IPO Day-wise Subscription.
+    Parses the HTML table string from 'sResultIPOBidding' for IPO Day-wise Subscription.
+    Updated to handle the actual table structure from the API response.
     """
     daywise_data = []
     if not html_table_string:
-        # print("  [Daywise Sub] No HTML string provided for daywise subscription.")
         return daywise_data
 
     soup = BeautifulSoup(html_table_string, 'html.parser')
-    table = soup.find('table', caption="IPO Bidding Live Updates from BSE, NSE")
+    table = soup.find('table')
+    
     if not table:
-        table = soup.find('table', class_='table-striped')
-        if not table:
-            # print("  [Daywise Sub] Daywise subscription table not found.")
-            return daywise_data
+        print("    ✗ No table found in sResultIPOBidding")
+        return daywise_data
 
-    headers = [clean_text(th.get_text()) for th in table.find('thead').find_all('th')]
-    header_mapping = {
-        'Day': 'day_number', 'Bid Date': 'date_time', 'QIB': 'qib_ratio',
-        'NII': 'nii_ratio', 'SNII (Below ₹10L)': 'snii_ratio', 'SNII': 'snii_ratio',
-        'BNII (Above ₹10L)': 'bnii_ratio', 'BNII': 'bnii_ratio', 'RII': 'rii_ratio',
-        'Retail': 'rii_ratio', 'Total': 'total_ratio'
-    }
-
-    output_keys = [header_mapping.get(h, clean_text(h).lower().replace(' ', '_')) for h in headers]
-
-    body_rows = table.find('tbody').find_all('tr')
-    for row in body_rows:
-        row_data = {}
+    print("    ✓ Found table, parsing day-wise subscription data...")
+    
+    # Find all rows in tbody
+    tbody = table.find('tbody')
+    if not tbody:
+        print("    ✗ No tbody found in table")
+        return daywise_data
+    
+    rows = tbody.find_all('tr')
+    
+    for row in rows:
         cells = row.find_all('td')
-        if len(cells) < len(output_keys):
+        if len(cells) < 2:
             continue
-
-        for i, cell in enumerate(cells):
-            if i < len(output_keys):
-                key = output_keys[i]
-                value = clean_text(cell.get_text())
-                if key == 'day_number':
-                    row_data[key] = convert_to_int(value)
-                elif '_ratio' in key:
-                    row_data[key] = convert_to_float(value)
-                else:
-                    row_data[key] = value
+            
+        # Check if this is a day row (has data-title="Day1", "Day2", etc.)
+        day_cell = cells[0]
+        date_cell = cells[1]
+        
+        # Skip header rows and offering rows
+        day_text = clean_text(day_cell.get_text())
+        if not day_text or day_text in ['', '&nbsp;'] or not day_text.isdigit():
+            continue
+            
+        row_data = {
+            "day_number": convert_to_int(day_text),
+            "date_time": clean_text(date_cell.get_text()),
+        }
+        
+        # Parse subscription ratios from remaining cells
+        if len(cells) >= 7:  # Day, Date, QIB, NII, RII, EMP, Total
+            row_data["qib_ratio"] = convert_to_float(clean_text(cells[2].get_text()))
+            row_data["nii_ratio"] = convert_to_float(clean_text(cells[3].get_text()))
+            row_data["rii_ratio"] = convert_to_float(clean_text(cells[4].get_text()))
+            row_data["emp_ratio"] = convert_to_float(clean_text(cells[5].get_text()))
+            row_data["total_ratio"] = convert_to_float(clean_text(cells[6].get_text()))
+        
         daywise_data.append(row_data)
-    # print(f"  [Daywise Sub] Parsed {len(daywise_data)} daywise subscription entries.")
+        print(f"      ✓ Day {row_data['day_number']}: Total {row_data.get('total_ratio', 'N/A')}x")
+    
     return daywise_data
 
 def parse_ipo_shares_bid_amount_table(html_table_string):
     """
-    Parses the HTML table string for IPO Shares Bid Amount.
+    FIXED: Parses the HTML table string from 'biddingReport' for IPO Shares Bid Amount.
+    This function now correctly extracts data from the biddingReport HTML structure.
     """
     bid_amount_data = []
     if not html_table_string:
-        # print("  [Bid Amount] No HTML string provided for bid amount table.")
+        print("    ✗ No HTML string provided for bid amount parsing")
         return bid_amount_data
 
     soup = BeautifulSoup(html_table_string, 'html.parser')
     
+    # Look for the table with caption "IPO Bidding Live Number of Shares by Category"
     target_table = None
     all_tables = soup.find_all('table')
-    for table in all_tables:
-        headers = [clean_text(th.get_text()) for th in table.find('thead').find_all('th')] if table.find('thead') else []
-        if 'Category' in headers and 'Shares Offered' in headers and 'Shares Bid' in headers and any('Amount' in h for h in headers):
+    
+    print(f"    Found {len(all_tables)} tables in biddingReport")
+    
+    for i, table in enumerate(all_tables):
+        caption = table.find('caption')
+        if caption and 'Number of Shares by Category' in caption.get_text():
             target_table = table
+            print(f"    ✓ Found target table with caption: '{caption.get_text()}'")
             break
-
+    
     if not target_table:
-        # print("  [Bid Amount] Shares bid amount table not found.")
+        print("    ✗ Could not find table with 'Number of Shares by Category' caption")
         return bid_amount_data
 
-    headers = [clean_text(th.get_text()) for th in target_table.find('thead').find_all('th')]
-    header_mapping = {
-        'Category': 'category', 'Shares Offered': 'shares_offered',
-        'Shares Bid': 'shares_bid', 'Amount (Cr.)': 'bid_amount_cr', 'Amount (Cr)': 'bid_amount_cr'
-    }
-    output_keys = [header_mapping.get(h, clean_text(h).lower().replace(' ', '_')) for h in headers]
-
-    body_rows = target_table.find('tbody').find_all('tr')
-    for row in body_rows:
-        row_data = {}
+    # Parse the table headers
+    thead = target_table.find('thead')
+    if not thead:
+        print("    ✗ No thead found in target table")
+        return bid_amount_data
+    
+    headers = [clean_text(th.get_text()) for th in thead.find_all('th')]
+    print(f"    Table headers: {headers}")
+    
+    # Parse the table body
+    tbody = target_table.find('tbody')
+    if not tbody:
+        print("    ✗ No tbody found in target table")
+        return bid_amount_data
+    
+    rows = tbody.find_all('tr')
+    print(f"    Found {len(rows)} rows in tbody")
+    
+    for row in rows:
         cells = row.find_all('td')
-        if len(cells) < len(output_keys):
+        if len(cells) < 4:  # Need at least Category, Shares Offered, Shares Bid, Bid Amount
             continue
-
-        for i, cell in enumerate(cells):
-            if i < len(output_keys):
-                key = output_keys[i]
-                value = clean_text(cell.get_text())
-                if key in ['shares_offered', 'shares_bid']:
-                    row_data[key] = convert_to_int(value)
-                elif key == 'bid_amount_cr':
-                    row_data[key] = convert_to_float(value)
-                else:
-                    row_data[key] = value
+            
+        category_text = clean_text(cells[0].get_text())
+        shares_offered_text = clean_text(cells[1].get_text())
+        shares_bid_text = clean_text(cells[2].get_text())
+        bid_amount_text = clean_text(cells[3].get_text())
+        
+        # Skip empty rows
+        if not category_text or category_text in ['', '&nbsp;']:
+            continue
+            
+        row_data = {
+            "category": category_text,
+            "shares_offered": convert_to_int(shares_offered_text),
+            "shares_bid": convert_to_int(shares_bid_text),
+            "bid_amount_cr": convert_to_float(bid_amount_text)
+        }
+        
         bid_amount_data.append(row_data)
-    # print(f"  [Bid Amount] Parsed {len(bid_amount_data)} shares bid amount entries.")
+        print(f"      ✓ {category_text}: {shares_offered_text} offered, {shares_bid_text} bid, ₹{bid_amount_text} Cr")
+    
     return bid_amount_data
-
 
 def scrape_and_format_financial_data(soup):
     """
@@ -729,7 +899,7 @@ def extract_contact_sections(soup):
     # print("  [Contact] Attempting to extract contact details...")
 
     def _extract_address_card(card):
-        result = {"name": "N/A", "address": "N/A", "website": "N/A", "phone": "N/A", "email": "N/A"}
+        result = {}
         try:
             body = card.find("div", class_="card-body")
             if not body: return result
@@ -759,9 +929,9 @@ def extract_contact_sections(soup):
                     while next_node and (isinstance(next_node, str) and not next_node.strip()):
                         next_node = next_node.next_sibling
                     value = clean_text(next_node.get_text() if next_node and not isinstance(next_node, str) else next_node)
-                    if "website" in label: result["website"] = value
-                    elif "phone" in label: result["phone"] = value
-                    elif "email" in label: result["email"] = value
+                    # if "website" in label: result["website"] = value
+                    # elif "phone" in label: result["phone"] = value
+                    # elif "email" in label: result["email"] = value
         except Exception as e:
             print(f"  [Contact] Error extracting address card: {e}")
         return result
@@ -798,7 +968,7 @@ def extract_contact_sections(soup):
         # print("  [Contact] Successfully extracted some contact details.")
     # else:
         # print("  [Contact] No contact details sections found.")
-
+    # print(f"  [Contact] Extracted contact details: {data}")
     return data
 
 def extract_last_updated(soup):
