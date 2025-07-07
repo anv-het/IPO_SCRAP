@@ -15,13 +15,25 @@ def clean_text(text):
     """
     Cleans extracted text by removing extra spaces, newlines, non-breaking spaces,
     and consolidating multiple spaces. Also removes common symbols for numeric conversion.
+    Enhanced to handle more edge cases and improve readability.
     """
     if text is None:
         return ""
-    text = str(text).replace('\xa0', ' ').replace('\n', ' ').strip()
-    text = re.sub(r'\s+', ' ', text) # Replace multiple spaces with a single space
+    text = str(text).replace('\xa0', ' ').replace('\n', ' ').replace('\r', ' ').strip()
+    text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with a single space
+    
+    # Clean up financial symbols but preserve the structure
+    original_text = text
     text = text.replace('&#8377;', '').replace('₹', '').replace('\u20b9', '').replace(',', '').replace('x', '').replace('%', '')
-    return text
+    
+    # If the text became empty after cleaning, return the original with just space normalization
+    if not text.strip():
+        return re.sub(r'\s+', ' ', original_text).strip()
+    
+    # Add space between numbers and text (e.g., "2Per Share" -> "2 Per Share")
+    text = re.sub(r'(\d)([A-Za-z])', r'\1 \2', text)
+    
+    return text.strip()
 
 def convert_to_int(value):
     """Converts a cleaned string to an integer, returning None if conversion fails."""
@@ -227,4 +239,97 @@ def download_logo(logo_url, company_name, ipo_id, base_dir="download/investorgai
     except Exception as e:
         print(f"  [Logo] Unexpected error downloading logo: {e}")
         return None
+
+def clean_html_content(html_content):
+    """
+    Enhanced HTML cleaning function that removes HTML tags and unparsed HTML from text.
+    Preserves the structure but removes all HTML markup.
+    """
+    if not html_content:
+        return ""
+    
+    # First, handle BeautifulSoup object if passed
+    if hasattr(html_content, 'get_text'):
+        return clean_text(html_content.get_text(separator=" ", strip=True))
+    
+    # Convert to string if not already
+    html_content = str(html_content)
+    
+    # Skip cleaning if it looks like a URL (to avoid BeautifulSoup warnings)
+    if html_content.startswith(('http://', 'https://', 'ftp://', 'ftps://')):
+        return html_content
+    
+    # Remove HTML tags using BeautifulSoup for robust parsing
+    from bs4 import BeautifulSoup
+    import warnings
+    from bs4 import MarkupResemblesLocatorWarning
+    
+    # Suppress the specific warning about URL-like strings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
+        soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Extract text content
+    text_content = soup.get_text(separator=" ", strip=True)
+    
+    # Apply additional cleaning
+    return clean_text(text_content)
+
+def ensure_clean_text_fields(data_dict):
+    """
+    Ensures all text fields in a dictionary are properly cleaned of HTML tags.
+    Preserves JSON fields and handles nested structures.
+    """
+    if not isinstance(data_dict, dict):
+        return data_dict
+    
+    # Fields that should be cleaned (not JSON fields)
+    text_fields_to_clean = [
+        'company_full_name_scraped', 'company_short_name_api', 'issue_price_band',
+        'issue_size_cr', 'shares_per_lot', 'min_order_quantity', 'gmp_latest',
+        'estimated_listing_price', 'drhp_url', 'rhp_url', 'anchor_list_url',
+        'retail_quota', 'issue_type', 'fresh_issue_amount', 'face_value',
+        'promoter_holding_pre_ipo', 'promoter_holding_post_ipo', 'listing_at',
+        'gmp_comments', 'subject_to_sauda', 'allotment_status_url', 'bse_code', 'nse_code'
+    ]
+    
+    # Fields that contain HTML content that should be preserved
+    html_fields_to_preserve = [
+        'post_listing_details_table_html'
+    ]
+    
+    # Fields that are JSON strings and should not be cleaned
+    json_fields = [
+        'ipo_strengths_json', 'ipo_objectives_json', 'company_financials_json',
+        'peer_comparison_json', 'contact_company_address_json', 'contact_ipo_registrar_json',
+        'contact_ipo_lead_manager_json', 'gmp_trend_history_json', 'subscription_bidding_history_json',
+        'subscription_share_allocation_json', 'subscription_daywise_table_json',
+        'subscription_shares_bid_amount_table_json', 'gmp_latest_details_json'
+    ]
+    
+    cleaned_data = {}
+    for key, value in data_dict.items():
+        if key in text_fields_to_clean:
+            # Clean HTML from text fields
+            cleaned_data[key] = clean_html_content(value) if value else value
+        elif key in html_fields_to_preserve:
+            # Preserve HTML fields as-is
+            cleaned_data[key] = value
+        elif key in json_fields:
+            # Preserve JSON fields as-is
+            cleaned_data[key] = value
+        elif key == 'about_company_text':
+            # Clean HTML from about text but preserve paragraph breaks
+            if value and value != 'N/A':
+                cleaned_data[key] = clean_html_content(value)
+            else:
+                cleaned_data[key] = value
+        else:
+            # Default: clean other fields
+            if isinstance(value, str) and value != 'N/A':
+                cleaned_data[key] = clean_html_content(value)
+            else:
+                cleaned_data[key] = value
+    
+    return cleaned_data
 

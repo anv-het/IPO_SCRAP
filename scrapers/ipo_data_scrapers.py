@@ -164,8 +164,8 @@ def extract_ipo_important_dates(soup):
 def extract_ipo_main_details_table(soup):
     """
     Extracts various IPO details from the main details table in a BeautifulSoup object.
-    This includes issue price, issue size, promoter holding, etc.
-    Updated to use the same logic as the working individual script.
+    This includes issue price, issue size, promoter holding, allotment status URL, BSE/NSE code, etc.
+    Updated to extract additional fields based on IPO status.
     """
     main_details = {}
     # print("  [Main Details] Attempting to extract main IPO details table...")
@@ -191,6 +191,9 @@ def extract_ipo_main_details_table(soup):
         "face_value": re.compile(r'Face Value', re.IGNORECASE),
         "promoter_holding_pre_ipo": re.compile(r'Promoter Holding Pre IPO', re.IGNORECASE),
         "promoter_holding_post_ipo": re.compile(r'Promoter Holding Post IPO', re.IGNORECASE),
+        "allotment_status_url": re.compile(r'Allotment Status|Allotment Link', re.IGNORECASE),
+        "bse_code": re.compile(r'BSE Code|BSE Symbol', re.IGNORECASE),
+        "nse_code": re.compile(r'NSE Code|NSE Symbol', re.IGNORECASE),
     }
 
     print("  ✓ Found main IPO details table.")
@@ -229,7 +232,15 @@ def extract_ipo_main_details_table(soup):
             # Check against all patterns
             for output_key, pattern in detail_field_patterns_map.items():
                 if pattern.search(label_text):
-                    main_details[output_key] = value
+                    # Special handling for BSE/NSE codes to ensure we get actual codes
+                    if output_key in ['bse_code', 'nse_code']:
+                        # Only accept values that look like stock codes
+                        if value and value != 'N/A' and re.match(r'^[A-Z0-9]{3,10}$', value.strip()):
+                            main_details[output_key] = value.strip()
+                        else:
+                            main_details[output_key] = 'N/A'
+                    else:
+                        main_details[output_key] = value
                     break  # Move to the next row once a match is found for this row
 
     # Ensure all expected keys are present, even if N/A
@@ -1059,4 +1070,54 @@ def extract_last_updated(soup):
     except Exception as e:
         print(f"  [Last Updated] Error extracting last updated info: {e}")
         return "N/A"
+
+def extract_post_listing_details_table(soup):
+    """
+    Extracts the full HTML content of the post-listing details table.
+    This table typically contains listing price, performance, and other post-listing data.
+    """
+    post_listing_html = 'N/A'
+    # print("  [Post-Listing] Attempting to extract post-listing details table...")
+    
+    # Look for tables that might contain post-listing information
+    post_listing_indicators = [
+        'Post Listing',
+        'Post-Listing',
+        'Listing Performance',
+        'Stock Performance',
+        'Current Market Price',
+        'Listing Price'
+    ]
+    
+    # Strategy 1: Look for table near post-listing headings
+    for indicator in post_listing_indicators:
+        for heading in soup.find_all(['h2', 'h3', 'h4']):
+            if indicator.lower() in heading.get_text().lower():
+                next_table = heading.find_next('table')
+                if next_table:
+                    post_listing_html = str(next_table)
+                    print(f"  [Post-Listing] Found post-listing table near heading: {indicator}")
+                    return {'post_listing_details_table_html': post_listing_html}
+    
+    # Strategy 2: Look for tables with post-listing related content
+    all_tables = soup.find_all('table')
+    for table in all_tables:
+        table_text = table.get_text().lower()
+        if any(indicator.lower() in table_text for indicator in post_listing_indicators):
+            post_listing_html = str(table)
+            print(f"  [Post-Listing] Found post-listing table by content matching")
+            return {'post_listing_details_table_html': post_listing_html}
+    
+    # Strategy 3: Look for tables with specific cells containing listing-related data
+    for table in all_tables:
+        cells = table.find_all(['td', 'th'])
+        for cell in cells:
+            cell_text = cell.get_text().lower()
+            if any(keyword in cell_text for keyword in ['listing price', 'current price', 'gain/loss', 'listing day']):
+                post_listing_html = str(table)
+                print(f"  [Post-Listing] Found post-listing table by cell content matching")
+                return {'post_listing_details_table_html': post_listing_html}
+    
+    # print("  [Post-Listing] No post-listing details table found.")
+    return {'post_listing_details_table_html': post_listing_html}
 

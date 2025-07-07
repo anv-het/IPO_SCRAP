@@ -99,7 +99,11 @@ class DatabaseManager:
             "promoter_holding_post_ipo TEXT",
             "listing_at TEXT",
             "gmp_comments TEXT",
-            "subject_to_sauda TEXT"
+            "subject_to_sauda TEXT",
+            "allotment_status_url TEXT",
+            "bse_code TEXT",
+            "nse_code TEXT",
+            "post_listing_details_table_html TEXT"
         ]
 
         # Specific JSON fields that might be larger, using NVARCHAR(MAX) for SQL Server
@@ -311,4 +315,57 @@ class DatabaseManager:
         except (sqlite3.Error, pyodbc.Error) as e:
             print(f"Error fetching all IPOs: {e}")
             return []
+
+    def add_new_columns_if_not_exist(self):
+        """
+        Add new columns to the existing table if they don't exist.
+        This handles schema evolution without losing existing data.
+        """
+        if not self.conn:
+            print("Database not connected. Cannot add columns.")
+            return
+
+        # Define new columns to add
+        new_columns = [
+            "allotment_status_url TEXT",
+            "bse_code TEXT", 
+            "nse_code TEXT",
+            "post_listing_details_table_html TEXT"
+        ]
+
+        try:
+            # Check existing columns
+            if self.use_sql_server:
+                # SQL Server approach
+                self.cursor.execute("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_NAME = 'ipo_master_data'
+                """)
+            else:
+                # SQLite approach
+                self.cursor.execute("PRAGMA table_info(ipo_master_data)")
+                
+            existing_columns = [row[1] if not self.use_sql_server else row[0] for row in self.cursor.fetchall()]
+            
+            # Add missing columns
+            for column_def in new_columns:
+                column_name = column_def.split()[0]
+                if column_name not in existing_columns:
+                    try:
+                        if self.use_sql_server:
+                            # SQL Server syntax
+                            alter_sql = f"ALTER TABLE ipo_master_data ADD {column_def.replace('TEXT', 'NVARCHAR(255)')}"
+                        else:
+                            # SQLite syntax
+                            alter_sql = f"ALTER TABLE ipo_master_data ADD COLUMN {column_def}"
+                        
+                        self.cursor.execute(alter_sql)
+                        self.conn.commit()
+                        print(f"Added column: {column_name}")
+                    except Exception as e:
+                        print(f"Error adding column {column_name}: {e}")
+                        
+        except Exception as e:
+            print(f"Error checking/adding columns: {e}")
 
