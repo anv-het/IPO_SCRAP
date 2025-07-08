@@ -9,6 +9,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from ipo_summary_scraper import IPOSummaryScraper, IPOSummaryDatabaseManager
+from config import DATABASE_TYPE, IPO_SUMMARY_TABLE_NAME
 import logging
 
 # Configure logging
@@ -66,27 +67,50 @@ def view_database_stats():
         return
     
     try:
+        print(f"\nDatabase Type: {DATABASE_TYPE}")
+        print(f"Table/Collection: {IPO_SUMMARY_TABLE_NAME}")
+        print("=" * 40)
+        
         # Get total records
-        db_manager.cursor.execute("SELECT COUNT(*) FROM ipo_summary_data")
-        total_records = db_manager.cursor.fetchone()[0]
+        if DATABASE_TYPE == 'mongodb':
+            total_records = db_manager.db[IPO_SUMMARY_TABLE_NAME].count_documents({})
+        else:
+            db_manager.cursor.execute(f"SELECT COUNT(*) FROM {IPO_SUMMARY_TABLE_NAME}")
+            total_records = db_manager.cursor.fetchone()[0]
         
         # Get records by year
-        db_manager.cursor.execute("""
-            SELECT year, COUNT(*) as count 
-            FROM ipo_summary_data 
-            GROUP BY year 
-            ORDER BY year DESC
-        """)
-        year_stats = db_manager.cursor.fetchall()
+        if DATABASE_TYPE == 'mongodb':
+            pipeline = [
+                {"$group": {"_id": "$year", "count": {"$sum": 1}}},
+                {"$sort": {"_id": -1}}
+            ]
+            year_stats = list(db_manager.db[IPO_SUMMARY_TABLE_NAME].aggregate(pipeline))
+            year_stats = [(result['_id'], result['count']) for result in year_stats]
+        else:
+            db_manager.cursor.execute(f"""
+                SELECT year, COUNT(*) as count 
+                FROM {IPO_SUMMARY_TABLE_NAME} 
+                GROUP BY year 
+                ORDER BY year DESC
+            """)
+            year_stats = db_manager.cursor.fetchall()
         
         # Get records by status
-        db_manager.cursor.execute("""
-            SELECT status, COUNT(*) as count 
-            FROM ipo_summary_data 
-            GROUP BY status 
-            ORDER BY count DESC
-        """)
-        status_stats = db_manager.cursor.fetchall()
+        if DATABASE_TYPE == 'mongodb':
+            pipeline = [
+                {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}}
+            ]
+            status_stats = list(db_manager.db[IPO_SUMMARY_TABLE_NAME].aggregate(pipeline))
+            status_stats = [(result['_id'], result['count']) for result in status_stats]
+        else:
+            db_manager.cursor.execute(f"""
+                SELECT status, COUNT(*) as count 
+                FROM {IPO_SUMMARY_TABLE_NAME} 
+                GROUP BY status 
+                ORDER BY count DESC
+            """)
+            status_stats = db_manager.cursor.fetchall()
         
         print("\nDatabase Statistics:")
         print("=" * 40)

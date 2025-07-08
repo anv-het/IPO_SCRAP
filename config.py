@@ -33,11 +33,19 @@ COMMON_HEADERS = {
 }
 
 # --- Database Configuration ---
-# Set to True to use SQL Server, False to use SQLite
-USE_SQL_SERVER = False 
+# Database Type Selection: 'sqlite', 'sqlserver', or 'mongodb'
+DATABASE_TYPE = 'mongodb'  # Options: 'sqlite', 'sqlserver', 'mongodb'
+
+# Legacy flags for backward compatibility
+USE_SQL_SERVER = DATABASE_TYPE == 'sqlserver'
+USE_MONGODB = DATABASE_TYPE == 'mongodb'
+
+# Table/Collection Names
+IPO_SUMMARY_TABLE_NAME = "investorgain_ipo_summary"
+IPO_MASTER_TABLE_NAME = "investorgain_ipo_master"
 
 # SQLite Database Configuration
-SQLITE_DB_NAME = "ipo_data_investorgain.db"
+SQLITE_DATABASE_PATH = "ipo_data_investorgain.db"
 
 # SQL Server Database Configuration
 SQL_SERVER_DB_CONFIG = {
@@ -46,6 +54,16 @@ SQL_SERVER_DB_CONFIG = {
     'database': 'E-IPO',
     'username': 'sa',
     'password': '963852'
+}
+
+# MongoDB Database Configuration
+MONGODB_CONFIG = {
+    'connection_string': 'mongodb://sa:963852@192.168.102.120:27017',
+    'database': 'WEB_SCRAPING',
+    'username': 'sa',
+    'password': '963852',
+    'host': '192.168.102.120',
+    'port': 27017
 }
 
 # --- Scraper settings ---

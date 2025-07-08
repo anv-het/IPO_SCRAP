@@ -13,6 +13,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from database.db_manager import DatabaseManager
+from config import DATABASE_TYPE, IPO_MASTER_TABLE_NAME
 
 class DetailedIPOViewer:
     """Viewer for detailed IPO data"""
@@ -34,26 +35,48 @@ class DetailedIPOViewer:
         """Get basic statistics about the detailed IPO database"""
         try:
             # Total records
-            self.db_manager.cursor.execute("SELECT COUNT(*) FROM ipo_master_data")
-            total_records = self.db_manager.cursor.fetchone()[0]
+            if DATABASE_TYPE == 'mongodb':
+                total_records = self.db_manager.db[IPO_MASTER_TABLE_NAME].count_documents({})
+            else:
+                self.db_manager.cursor.execute(f"SELECT COUNT(*) FROM {IPO_MASTER_TABLE_NAME}")
+                total_records = self.db_manager.cursor.fetchone()[0]
             
             # Records by category
-            self.db_manager.cursor.execute("""
-                SELECT ipo_category, COUNT(*) as count 
-                FROM ipo_master_data 
-                WHERE ipo_category IS NOT NULL 
-                GROUP BY ipo_category 
-                ORDER BY count DESC
-            """)
-            category_stats = self.db_manager.cursor.fetchall()
+            if DATABASE_TYPE == 'mongodb':
+                pipeline = [
+                    {"$match": {"ipo_category": {"$ne": None}}},
+                    {"$group": {"_id": "$ipo_category", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}}
+                ]
+                category_stats = list(self.db_manager.db[IPO_MASTER_TABLE_NAME].aggregate(pipeline))
+                category_stats = [(result['_id'], result['count']) for result in category_stats]
+            else:
+                self.db_manager.cursor.execute(f"""
+                    SELECT ipo_category, COUNT(*) as count 
+                    FROM {IPO_MASTER_TABLE_NAME} 
+                    WHERE ipo_category IS NOT NULL 
+                    GROUP BY ipo_category 
+                    ORDER BY count DESC
+                """)
+                category_stats = self.db_manager.cursor.fetchall()
             
             # Recent entries
-            self.db_manager.cursor.execute("""
-                SELECT ipo_id, company_full_name_scraped, ipo_category, scraping_date
-                FROM ipo_master_data 
-                ORDER BY scraping_date DESC 
-                LIMIT 10
-            """)
+            if DATABASE_TYPE == 'mongodb':
+                recent_entries = list(self.db_manager.db[IPO_MASTER_TABLE_NAME].find(
+                    {},
+                    {"ipo_id": 1, "company_full_name_scraped": 1, "ipo_category": 1, "scraping_date": 1}
+                ).sort("scraping_date", -1).limit(10))
+                recent_entries = [(entry.get('ipo_id'), entry.get('company_full_name_scraped'), 
+                                entry.get('ipo_category'), entry.get('scraping_date')) 
+                               for entry in recent_entries]
+            else:
+                self.db_manager.cursor.execute(f"""
+                    SELECT ipo_id, company_full_name_scraped, ipo_category, scraping_date
+                    FROM {IPO_MASTER_TABLE_NAME} 
+                    ORDER BY scraping_date DESC 
+                    LIMIT 10
+                """)
+                recent_entries = self.db_manager.cursor.fetchall()
             recent_entries = self.db_manager.cursor.fetchall()
             
             return {
@@ -69,16 +92,27 @@ class DetailedIPOViewer:
     def search_ipo_by_name(self, search_term: str):
         """Search for IPOs by company name"""
         try:
-            query = """
-                SELECT ipo_id, company_full_name_scraped, ipo_category, 
-                       issue_price_band, issue_size_cr, listing_date
-                FROM ipo_master_data 
-                WHERE company_full_name_scraped LIKE ? 
-                ORDER BY company_full_name_scraped
-            """
-            
-            self.db_manager.cursor.execute(query, (f"%{search_term}%",))
-            results = self.db_manager.cursor.fetchall()
+            if DATABASE_TYPE == 'mongodb':
+                results = list(self.db_manager.db[IPO_MASTER_TABLE_NAME].find(
+                    {"company_full_name_scraped": {"$regex": search_term, "$options": "i"}},
+                    {"ipo_id": 1, "company_full_name_scraped": 1, "ipo_category": 1, 
+                     "issue_price_band": 1, "issue_size_cr": 1, "listing_date": 1}
+                ).sort("company_full_name_scraped", 1))
+                results = [(result.get('ipo_id'), result.get('company_full_name_scraped'),
+                           result.get('ipo_category'), result.get('issue_price_band'),
+                           result.get('issue_size_cr'), result.get('listing_date'))
+                          for result in results]
+            else:
+                query = f"""
+                    SELECT ipo_id, company_full_name_scraped, ipo_category, 
+                           issue_price_band, issue_size_cr, listing_date
+                    FROM {IPO_MASTER_TABLE_NAME} 
+                    WHERE company_full_name_scraped LIKE ? 
+                    ORDER BY company_full_name_scraped
+                """
+                
+                self.db_manager.cursor.execute(query, (f"%{search_term}%",))
+                results = self.db_manager.cursor.fetchall()
             
             return results
             
@@ -89,14 +123,23 @@ class DetailedIPOViewer:
     def get_ipo_details(self, ipo_id: str):
         """Get detailed information for a specific IPO"""
         try:
-            query = "SELECT * FROM ipo_master_data WHERE ipo_id = ?"
-            self.db_manager.cursor.execute(query, (ipo_id,))
-            result = self.db_manager.cursor.fetchone()
-            
-            if result:
-                # Get column names
-                columns = [description[0] for description in self.db_manager.cursor.description]
-                # Create dictionary
+            if DATABASE_TYPE == 'mongodb':
+                result = self.db_manager.db[IPO_MASTER_TABLE_NAME].find_one({"ipo_id": ipo_id})
+                if result:
+                    # Remove MongoDB's _id field for cleaner output
+                    result.pop('_id', None)
+                    return result
+                return None
+            else:
+                query = f"SELECT * FROM {IPO_MASTER_TABLE_NAME} WHERE ipo_id = ?"
+                self.db_manager.cursor.execute(query, (ipo_id,))
+                result = self.db_manager.cursor.fetchone()
+                
+                if result:
+                    # Get column names
+                    columns = [description[0] for description in self.db_manager.cursor.description]
+                    # Create dictionary
+                    ipo_data = dict(zip(columns, result))
                 ipo_data = dict(zip(columns, result))
                 return ipo_data
             

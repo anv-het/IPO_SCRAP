@@ -19,6 +19,7 @@ import random
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from database.db_manager import DatabaseManager
+from config import DATABASE_TYPE, IPO_SUMMARY_TABLE_NAME, IPO_MASTER_TABLE_NAME
 from scrapers.ipo_data_scrapers import (
     extract_company_name_and_logo,
     extract_company_about,
@@ -86,39 +87,60 @@ class DetailedIPOScraper:
     def get_ipo_summary_data(self, ipo_id: str) -> Dict:
         """Get IPO summary data for a specific IPO ID"""
         try:
-            query = """
-                SELECT ipo_name, ipo_category, ipo_size, pe_ratio, ipo_price, lot_size,
-                       open_date, close_date, boa_date, listing_date, url_rewrite
-                FROM ipo_summary_data 
-                WHERE ipo_id = ? 
-                LIMIT 1
-            """
-            self.db_manager.cursor.execute(query, (ipo_id,))
-            result = self.db_manager.cursor.fetchone()
+            if DATABASE_TYPE == 'mongodb':
+                result = self.db_manager.db[IPO_SUMMARY_TABLE_NAME].find_one(
+                    {"ipo_id": ipo_id},
+                    {"ipo_name": 1, "ipo_category": 1, "ipo_size": 1, "pe_ratio": 1,
+                     "ipo_price": 1, "lot_size": 1, "open_date": 1, "close_date": 1,
+                     "boa_date": 1, "listing_date": 1, "url_rewrite": 1}
+                )
+                
+                if result:
+                    return {
+                        'company_short_name_api': result.get('ipo_name'),
+                        'ipo_category': result.get('ipo_category'), 
+                        'issue_size_cr': result.get('ipo_size'),
+                        'pe_ratio': result.get('pe_ratio'),
+                        'ipo_price': result.get('ipo_price'),
+                        'shares_per_lot': result.get('lot_size'),
+                        'ipo_open_date': result.get('open_date'),
+                        'ipo_close_date': result.get('close_date'),
+                        'basis_of_allotment_date': result.get('boa_date'),
+                        'listing_date': result.get('listing_date'),
+                        'url_rewrite': result.get('url_rewrite')
+                    }
+            else:
+                query = f"""
+                    SELECT ipo_name, ipo_category, ipo_size, pe_ratio, ipo_price, lot_size,
+                           open_date, close_date, boa_date, listing_date, url_rewrite
+                    FROM {IPO_SUMMARY_TABLE_NAME} 
+                    WHERE ipo_id = ? 
+                    LIMIT 1
+                """
+                self.db_manager.cursor.execute(query, (ipo_id,))
+                result = self.db_manager.cursor.fetchone()
 
-            print(f"Fetching summary data for IPO ID: {ipo_id}")
-            # print(f"Query executed: {query}")
-            # print(f"Result: {result}")
-            
-            if result:
-                return {
-                    'company_short_name_api': result[0],
-                    'ipo_category': result[1], 
-                    'issue_size_cr': result[2],
-                    'pe_ratio': result[3],
-                    'ipo_price': result[4],
-                    'shares_per_lot': result[5],
-                    'ipo_open_date': result[6],
-                    'ipo_close_date': result[7],
-                    'basis_of_allotment_date': result[8],
-                    'listing_date': result[9],
-                    'url_rewrite': result[10]
-                }
+                print(f"Fetching summary data for IPO ID: {ipo_id}")
+                
+                if result:
+                    return {
+                        'company_short_name_api': result[0],
+                        'ipo_category': result[1], 
+                        'issue_size_cr': result[2],
+                        'pe_ratio': result[3],
+                        'ipo_price': result[4],
+                        'shares_per_lot': result[5],
+                        'ipo_open_date': result[6],
+                        'ipo_close_date': result[7],
+                        'basis_of_allotment_date': result[8],
+                        'listing_date': result[9],
+                        'url_rewrite': result[10]
+                    }
             
             return {}
             
         except Exception as e:
-            logger.error(f"Error getting summary data for IPO ID {ipo_id}: {e}")
+            logger.error(f"Error getting summary data for IPO {ipo_id}: {e}")
             return {}
     
     def get_ipo_ids_from_summary(self, year_filter: Optional[int] = None, limit: Optional[int] = None) -> List[Tuple[str, str]]:
@@ -127,21 +149,44 @@ class DetailedIPOScraper:
         Returns list of tuples (ipo_id, url_rewrite)
         """
         try:
-            if year_filter:
-                query = "SELECT ipo_id, url_rewrite FROM ipo_summary_data WHERE year = ? AND ipo_id IS NOT NULL AND url_rewrite IS NOT NULL"
-                params = (year_filter,)
-            else:
-                query = "SELECT ipo_id, url_rewrite FROM ipo_summary_data WHERE ipo_id IS NOT NULL AND url_rewrite IS NOT NULL"
-                params = ()
-            
-            if limit:
-                query += f" LIMIT {limit}"
+            if DATABASE_TYPE == 'mongodb':
+                # MongoDB query
+                query_filter = {}
+                if year_filter:
+                    query_filter['year'] = year_filter
                 
-            self.db_manager.cursor.execute(query, params)
-            results = self.db_manager.cursor.fetchall()
-            
-            logger.info(f"Found {len(results)} IPO IDs to process")
-            return [(str(row[0]), str(row[1])) for row in results]
+                # Only get records with ipo_id and url_rewrite
+                query_filter['ipo_id'] = {'$ne': None, '$exists': True}
+                query_filter['url_rewrite'] = {'$ne': None, '$exists': True}
+                
+                cursor = self.db_manager.db[IPO_SUMMARY_TABLE_NAME].find(
+                    query_filter,
+                    {"ipo_id": 1, "url_rewrite": 1}
+                )
+                
+                if limit:
+                    cursor = cursor.limit(limit)
+                
+                results = [(str(doc['ipo_id']), str(doc['url_rewrite'])) for doc in cursor]
+                logger.info(f"Found {len(results)} IPO IDs to process")
+                return results
+            else:
+                # SQL query
+                if year_filter:
+                    query = f"SELECT ipo_id, url_rewrite FROM {IPO_SUMMARY_TABLE_NAME} WHERE year = ? AND ipo_id IS NOT NULL AND url_rewrite IS NOT NULL"
+                    params = (year_filter,)
+                else:
+                    query = f"SELECT ipo_id, url_rewrite FROM {IPO_SUMMARY_TABLE_NAME} WHERE ipo_id IS NOT NULL AND url_rewrite IS NOT NULL"
+                    params = ()
+                
+                if limit:
+                    query += f" LIMIT {limit}"
+                    
+                self.db_manager.cursor.execute(query, params)
+                results = self.db_manager.cursor.fetchall()
+                
+                logger.info(f"Found {len(results)} IPO IDs to process")
+                return [(str(row[0]), str(row[1])) for row in results]
             
         except Exception as e:
             logger.error(f"Error getting IPO IDs from summary table: {e}")
@@ -153,9 +198,9 @@ class DetailedIPOScraper:
         Returns list of tuples (ipo_id, url_rewrite)
         """
         try:
-            query = """
+            query = f"""
                 SELECT ipo_id, url_rewrite 
-                FROM ipo_summary_data 
+                FROM {IPO_SUMMARY_TABLE_NAME} 
                 WHERE CAST(ipo_id AS INTEGER) BETWEEN ? AND ?
                 AND ipo_id IS NOT NULL 
                 AND url_rewrite IS NOT NULL
@@ -179,27 +224,46 @@ class DetailedIPOScraper:
     def get_summary_data_for_ipo(self, ipo_id: str) -> Dict:
         """Get data from summary table for this IPO ID"""
         try:
-            query = """
-                SELECT ipo_name, ipo_category, ipo_price, lot_size, 
-                       status, list_price, list_gain, ipo_size
-                FROM ipo_summary_data 
-                WHERE ipo_id = ? 
-                LIMIT 1
-            """
-            self.db_manager.cursor.execute(query, (ipo_id,))
-            result = self.db_manager.cursor.fetchone()
-            
-            if result:
-                return {
-                    'company_short_name_api': result[0],  # ipo_name from summary
-                    'ipo_category': result[1],
-                    'ipo_price': result[2],
-                    'shares_per_lot': result[3],  # lot_size from summary
-                    'status': result[4],
-                    'list_price': result[5],
-                    'list_gain': result[6],
-                    'ipo_size': result[7]
-                }
+            if DATABASE_TYPE == 'mongodb':
+                result = self.db_manager.db[IPO_SUMMARY_TABLE_NAME].find_one(
+                    {"ipo_id": ipo_id},
+                    {"ipo_name": 1, "ipo_category": 1, "ipo_price": 1, "lot_size": 1,
+                     "status": 1, "list_price": 1, "list_gain": 1, "ipo_size": 1}
+                )
+                
+                if result:
+                    return {
+                        'company_short_name_api': result.get('ipo_name'),
+                        'ipo_category': result.get('ipo_category'),
+                        'ipo_price': result.get('ipo_price'),
+                        'shares_per_lot': result.get('lot_size'),
+                        'status': result.get('status'),
+                        'list_price': result.get('list_price'),
+                        'list_gain': result.get('list_gain'),
+                        'ipo_size': result.get('ipo_size')
+                    }
+            else:
+                query = f"""
+                    SELECT ipo_name, ipo_category, ipo_price, lot_size, 
+                           status, list_price, list_gain, ipo_size
+                    FROM {IPO_SUMMARY_TABLE_NAME} 
+                    WHERE ipo_id = ? 
+                    LIMIT 1
+                """
+                self.db_manager.cursor.execute(query, (ipo_id,))
+                result = self.db_manager.cursor.fetchone()
+                
+                if result:
+                    return {
+                        'company_short_name_api': result[0],  # ipo_name from summary
+                        'ipo_category': result[1],
+                        'ipo_price': result[2],
+                        'shares_per_lot': result[3],  # lot_size from summary
+                        'status': result[4],
+                        'list_price': result[5],
+                        'list_gain': result[6],
+                        'ipo_size': result[7]
+                    }
             return {}
         except Exception as e:
             logger.error(f"Error getting summary data for IPO {ipo_id}: {e}")
@@ -208,21 +272,16 @@ class DetailedIPOScraper:
     def check_if_detailed_data_exists(self, ipo_id: str) -> bool:
         """Check if detailed data already exists for this IPO ID"""
         try:
-            self.db_manager.cursor.execute(
-                "SELECT COUNT(*) FROM ipo_master_data WHERE ipo_id = ?",
-                (ipo_id,)
-            )
-            count = self.db_manager.cursor.fetchone()[0]
-            return count > 0
-        except Exception as e:
-            logger.error(f"Error checking existing data for IPO ID {ipo_id}: {e}")
-            return False
-            self.db_manager.cursor.execute(
-                "SELECT COUNT(*) FROM ipo_master_data WHERE ipo_id = ?",
-                (ipo_id,)
-            )
-            count = self.db_manager.cursor.fetchone()[0]
-            return count > 0
+            if DATABASE_TYPE == 'mongodb':
+                count = self.db_manager.db[IPO_MASTER_TABLE_NAME].count_documents({"ipo_id": ipo_id})
+                return count > 0
+            else:
+                self.db_manager.cursor.execute(
+                    f"SELECT COUNT(*) FROM {IPO_MASTER_TABLE_NAME} WHERE ipo_id = ?",
+                    (ipo_id,)
+                )
+                count = self.db_manager.cursor.fetchone()[0]
+                return count > 0
         except Exception as e:
             logger.error(f"Error checking existing data for IPO ID {ipo_id}: {e}")
             return False
@@ -273,7 +332,7 @@ class DetailedIPOScraper:
             # Extract basic IPO info from main details table (includes issue_type)
             basic_info = extract_ipo_main_details_table(soup)
             print(f"basicinfo length: {len(basic_info)}")
-            print(f"basic_info: {basic_info}")
+            # print(f"basic_info: {basic_info}")
             ipo_data.update(basic_info)
             
             # Extract IPO dates
@@ -480,7 +539,7 @@ class DetailedIPOScraper:
             # Step 1: Get main details table (now includes new fields)
             basic_info = extract_ipo_main_details_table(soup)
             print(f"✅ Extracted {len(basic_info)} main table fields for IPO ID {ipo_id}")
-            print(f"→ Main Table Data: {basic_info}")
+            # print(f"→ Main Table Data: {basic_info}")
 
             # Step 2: Fill in from main table
             keys_to_copy = [
@@ -590,7 +649,7 @@ class DetailedIPOScraper:
                     if exchanges:
                         additional_data['listing_at'] = ', '.join(sorted(set(exchanges)))
 
-            print(f"📦 Final Additional Data for IPO ID {ipo_id}: {additional_data}")
+            # print(f"📦 Final Additional Data for IPO ID {ipo_id}: {additional_data}")
             return additional_data
 
         except Exception as e:

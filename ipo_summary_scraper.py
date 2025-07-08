@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import logging
 from database.db_manager import DatabaseManager
+from config import IPO_SUMMARY_TABLE_NAME, DATABASE_TYPE, MONGODB_CONFIG
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -21,15 +22,20 @@ class IPOSummaryDatabaseManager(DatabaseManager):
     
     def create_ipo_summary_table(self):
         """Creates the IPO summary table if it doesn't exist"""
-        if not self.conn:
+        if not self.conn and not self.db:
             logger.error("Database not connected. Cannot create table.")
             return
 
-        # Define table schema
-        if self.use_sql_server:
-            create_table_sql = """
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ipo_summary_data' and xtype='U')
-            CREATE TABLE ipo_summary_data (
+        # MongoDB doesn't require explicit table creation
+        if self.database_type == 'mongodb':
+            logger.info(f"MongoDB collection '{self.summary_table_name}' will be created automatically when data is inserted.")
+            return
+
+        # Define table schema for SQL databases
+        if self.database_type == 'sqlserver':
+            create_table_sql = f"""
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='{self.summary_table_name}' and xtype='U')
+            CREATE TABLE {self.summary_table_name} (
                 id INT IDENTITY(1,1) PRIMARY KEY,
                 year INT NOT NULL,
                 ipo_id NVARCHAR(50) NOT NULL,
@@ -55,13 +61,13 @@ class IPOSummaryDatabaseManager(DatabaseManager):
                 updated_at DATETIME DEFAULT GETDATE(),
                 CONSTRAINT unique_ipo_year UNIQUE (ipo_id, year)
             );
-            CREATE INDEX idx_year ON ipo_summary_data(year);
-            CREATE INDEX idx_ipo_name ON ipo_summary_data(ipo_name);
-            CREATE INDEX idx_created_at ON ipo_summary_data(created_at);
+            CREATE INDEX idx_year ON {self.summary_table_name}(year);
+            CREATE INDEX idx_ipo_name ON {self.summary_table_name}(ipo_name);
+            CREATE INDEX idx_created_at ON {self.summary_table_name}(created_at);
             """
         else:
-            create_table_sql = """
-            CREATE TABLE IF NOT EXISTS ipo_summary_data (
+            create_table_sql = f"""
+            CREATE TABLE IF NOT EXISTS {self.summary_table_name} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 year INTEGER NOT NULL,
                 ipo_id TEXT NOT NULL,
@@ -87,14 +93,14 @@ class IPOSummaryDatabaseManager(DatabaseManager):
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(ipo_id, year)
             );
-            CREATE INDEX IF NOT EXISTS idx_year ON ipo_summary_data(year);
-            CREATE INDEX IF NOT EXISTS idx_ipo_name ON ipo_summary_data(ipo_name);
-            CREATE INDEX IF NOT EXISTS idx_created_at ON ipo_summary_data(created_at);
+            CREATE INDEX IF NOT EXISTS idx_year ON {self.summary_table_name}(year);
+            CREATE INDEX IF NOT EXISTS idx_ipo_name ON {self.summary_table_name}(ipo_name);
+            CREATE INDEX IF NOT EXISTS idx_created_at ON {self.summary_table_name}(created_at);
             """
 
         try:
             # For SQL Server, execute each statement separately
-            if self.use_sql_server:
+            if self.database_type == 'sqlserver':
                 statements = create_table_sql.split(';')
                 for stmt in statements:
                     if stmt.strip():
@@ -104,13 +110,13 @@ class IPOSummaryDatabaseManager(DatabaseManager):
                 self.cursor.executescript(create_table_sql)
             
             self.conn.commit()
-            logger.info("Table 'ipo_summary_data' created successfully or already exists.")
+            logger.info(f"Table '{self.summary_table_name}' created successfully or already exists.")
         except Exception as e:
             logger.error(f"Error creating table: {e}")
 
     def insert_or_update_ipo_summary(self, ipo_data: Dict) -> bool:
         """Insert or update IPO summary data"""
-        if not self.conn:
+        if not self.conn and not self.db:
             logger.error("Database not connected. Cannot insert/update data.")
             return False
 
@@ -122,18 +128,46 @@ class IPOSummaryDatabaseManager(DatabaseManager):
             logger.error("Missing required fields: ipo_id or year")
             return False
 
+        # MongoDB implementation
+        if self.database_type == 'mongodb':
+            try:
+                collection = self.db[self.summary_table_name]
+                
+                # Prepare data for MongoDB
+                mongo_data = dict(ipo_data)
+                mongo_data['updated_at'] = datetime.utcnow()
+                
+                # Upsert operation
+                result = collection.replace_one(
+                    {"ipo_id": ipo_id, "year": year}, 
+                    mongo_data, 
+                    upsert=True
+                )
+                
+                if result.upserted_id:
+                    logger.info(f"Inserted IPO summary: {ipo_id} for year {year}")
+                elif result.modified_count > 0:
+                    logger.info(f"Updated IPO summary: {ipo_id} for year {year}")
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error inserting/updating MongoDB summary data: {e}")
+                return False
+
+        # SQL Database implementation
         try:
             # Check if record exists
             self.cursor.execute(
-                "SELECT id FROM ipo_summary_data WHERE ipo_id = ? AND year = ?", 
+                f"SELECT id FROM {self.summary_table_name} WHERE ipo_id = ? AND year = ?", 
                 (ipo_id, year)
             )
             existing_record = self.cursor.fetchone()
 
             if existing_record:
                 # Update existing record
-                update_sql = """
-                UPDATE ipo_summary_data SET 
+                update_sql = f"""
+                UPDATE {self.summary_table_name} SET 
                     ipo_name = ?, status = ?, list_price = ?, list_gain = ?, 
                     ipo_size = ?, pe_ratio = ?, ipo_price = ?, lot_size = ?,
                     open_date = ?, close_date = ?, boa_date = ?, listing_date = ?,
@@ -161,7 +195,7 @@ class IPOSummaryDatabaseManager(DatabaseManager):
                     ipo_data.get('ipo_category'),
                     ipo_data.get('rating'),
                     ipo_data.get('raw_data'),
-                    datetime.now().isoformat() if not self.use_sql_server else datetime.now(),
+                    datetime.now().isoformat() if self.database_type != 'sqlserver' else datetime.now(),
                     ipo_id,
                     year
                 ]
@@ -170,8 +204,8 @@ class IPOSummaryDatabaseManager(DatabaseManager):
                 logger.info(f"Updated IPO ID: {ipo_id} for year {year}")
             else:
                 # Insert new record
-                insert_sql = """
-                INSERT INTO ipo_summary_data (
+                insert_sql = f"""
+                INSERT INTO {self.summary_table_name} (
                     year, ipo_id, ipo_name, status, list_price, list_gain,
                     ipo_size, pe_ratio, ipo_price, lot_size, open_date, 
                     close_date, boa_date, listing_date, url_rewrite, 

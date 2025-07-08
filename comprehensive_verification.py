@@ -2,18 +2,25 @@
 """
 Comprehensive verification script for new IPO scraper features
 """
-import sqlite3
 import re
+from database.db_manager import DatabaseManager
+from config import DATABASE_TYPE, IPO_MASTER_TABLE_NAME
 
 def verify_new_features():
     """Verify all new features are working correctly"""
     
     # Connect to database
-    conn = sqlite3.connect('ipo_data_investorgain.db')
-    cursor = conn.cursor()
+    db_manager = DatabaseManager()
+    db_manager.connect()
+    
+    if not db_manager.conn and not db_manager.db:
+        print("❌ Failed to connect to database")
+        return
     
     print("🔍 COMPREHENSIVE VERIFICATION OF NEW IPO SCRAPER FEATURES")
     print("=" * 65)
+    print(f"Database Type: {DATABASE_TYPE}")
+    print(f"Master Table/Collection: {IPO_MASTER_TABLE_NAME}")
     
     # Check schema changes
     print("\n📋 Schema Verification:")
